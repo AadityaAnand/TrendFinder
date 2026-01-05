@@ -16,13 +16,32 @@ TrendGenerator/
 
 - ✅ Project structure created
 - ✅ Environment files configured
-- ⏳ Next.js app - pending initialization
-- ⏳ Python environment - pending setup
+- ✅ Next.js app initialized (TypeScript + Tailwind + App Router)
+- ✅ Python virtual environment set up
+- ✅ All dependencies installed
 - ⏳ Database schema - pending creation
+- ⏳ Data collection scripts - pending creation
+
+## Development
+
+**Frontend (Next.js)**
+```bash
+cd frontend
+npm run dev
+# Runs on http://localhost:3001
+```
+
+**Backend (Python Scrapers)**
+```bash
+cd scrapers
+source venv/bin/activate
+python your_script.py
+```
 
 ## Next Steps
 
-1. Initialize Next.js frontend
-2. Set up Python virtual environment
-3. Create Supabase database schema
-4. Build data collection scripts
+1. Create Supabase database schema
+2. Build Hacker News scraper
+3. Build Dev.to scraper
+4. Create trend detection logic
+5. Set up GitHub Actions for automation
