@@ -14,7 +14,11 @@ STOP_WORDS = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for
     'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may',
     'might', 'can', 'this', 'that', 'these', 'those', 'i', 'you', 'he',
     'she', 'it', 'we', 'they', 'what', 'which', 'who', 'when', 'where',
-    'why', 'how', 'show', 'hn', 'ask'}
+    'why', 'how', 'show', 'hn', 'ask', 'just', 'its', 'over', 'your', 'about', 'like', 'now', 'here', 'there',
+    'then', 'than', 'them', 'their', 'into', 'out', 'all', 'some', 'any',
+    'other', 'more', 'most', 'such', 'very', 'much', 'each', 'every',
+    'both', 'few', 'many', 'says', 'said', 'make', 'made', 'get', 'got',
+    'one', 'two', 'first', 'last', 'new', 'old', 'good', 'bad'}
 
 def extract_keywords(text):
     cleaned = re.sub(r'[^a-z0-9\s]', '', text.lower())
@@ -46,7 +50,7 @@ def group_signals_into_trends(signals):
     trends = {}
     for signal_id, keywords in signal_keywords.items():
         for keyword in keywords:
-            if keyword_counts[keyword] >= 2:
+            if keyword_counts[keyword] >= 3:
                 if keyword not in trends:
                     trends[keyword] = []
                 trends[keyword].append(signal_id)
@@ -67,7 +71,28 @@ def group_signals_into_trends(signals):
         })
 
     trend_data.sort(key=lambda x: x['momentum_score'], reverse=True)
-    return trend_data
+    quality_trends = [t for t in trend_data if t['momentum_score'] > 50]
+    return quality_trends[:20]
+
+def save_trends_to_db(trends):
+    saved_count = 0
+    for trend in trends:
+        data = {
+            'theme': trend['keyword'],
+            'keywords': [trend['keyword']],
+            'momentum_score': trend['momentum_score'],
+            'signal_count': trend['signal_count'],
+            'first_seen': datetime.now().isoformat(),
+            'status': 'emerging'
+        }
+        try:
+            supabase.table('detected_trends').insert(data).execute()
+            saved_count += 1
+        except Exception as e:
+            print(f"Error saving trend '{trend['keyword']}': {e}")
+    print(f"Saved {saved_count} trends to the database.")
+    return saved_count
+
 
 def main():
     print("Fetching signals from database...")
@@ -81,13 +106,15 @@ def main():
     print("\nDetecting trends...")
     trends = group_signals_into_trends(signals)
 
-    print(f"\nDetected {len(trends)} trends:\n")
+    print(f"\nDetected {len(trends)} trends")
 
+    # Save to database
+    saved_count = save_trends_to_db(trends)
+
+    # Print for verification
+    print(f"\nTop trends:")
     for i, trend in enumerate(trends, 1):
-        print(f"{i}. Keyword: '{trend['keyword']}'")
-        print(f"   Signal Count: {trend['signal_count']}")
-        print(f"   Momentum Score: {trend['momentum_score']:.2f}")
-        print()
+        print(f"{i}. '{trend['keyword']}' - Signals: {trend['signal_count']}, Score: {trend['momentum_score']:.2f}")
 
 if __name__ == "__main__":
     main()
