@@ -7,7 +7,7 @@ import re
 
 load_dotenv()
 SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")    
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 STOP_WORDS = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
     'of', 'with', 'is', 'are', 'was', 'were', 'been', 'be', 'have', 'has',
@@ -19,6 +19,22 @@ STOP_WORDS = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for
     'other', 'more', 'most', 'such', 'very', 'much', 'each', 'every',
     'both', 'few', 'many', 'says', 'said', 'make', 'made', 'get', 'got',
     'one', 'two', 'first', 'last', 'new', 'old', 'good', 'bad'}
+
+
+THEME_CLUSTERS = {
+    'AI & Machine Learning': ['ai', 'llm', 'llms', 'model', 'models', 'machine', 'learning', 'gpt', 'claude', 'openai', 'anthropic', 'chatgpt', 'gemini', 'embedding', 'embeddings'],
+    'Development Tools': ['code', 'coding', 'development', 'developer', 'developers', 'programming', 'framework', 'frameworks', 'library', 'libraries', 'tool', 'tools'],
+    'Web & APIs': ['api', 'apis', 'web', 'http', 'rest', 'graphql', 'endpoint', 'endpoints'],
+    'Data & Analytics': ['data', 'analytics', 'database', 'databases', 'sql', 'analysis', 'visualization'],
+    'Cloud & Infrastructure': ['cloud', 'aws', 'azure', 'docker', 'kubernetes', 'infrastructure', 'deployment'],
+    'Mobile': ['mobile', 'ios', 'android', 'app', 'apps', 'application', 'applications']
+}
+
+def map_keyword_to_theme(keyword):
+    for theme, keywords in THEME_CLUSTERS.items():
+        if keyword in keywords:
+            return theme
+    return None
 
 def extract_keywords(text):
     cleaned = re.sub(r'[^a-z0-9\s]', '', text.lower())
@@ -42,29 +58,34 @@ def group_signals_into_trends(signals):
         keywords = extract_keywords(title)
         if keywords:
             signal_keywords[signal_id] = keywords
-    
-    keyword_counts = Counter()
-    for keywords in signal_keywords.values():
-        keyword_counts.update(keywords)
 
-    trends = {}
+    # Map keywords to themes
+    theme_signals = {}
     for signal_id, keywords in signal_keywords.items():
         for keyword in keywords:
-            if keyword_counts[keyword] >= 3:
-                if keyword not in trends:
-                    trends[keyword] = []
-                trends[keyword].append(signal_id)
+            theme = map_keyword_to_theme(keyword)
+            if theme:
+                if theme not in theme_signals:
+                    theme_signals[theme] = []
+                theme_signals[theme].append(signal_id)
 
+    # Build trend data for themes
     trend_data = []
-    for keyword, signal_ids in trends.items():
+    for theme, signal_ids in theme_signals.items():
+        # Remove duplicates
+        signal_ids = list(set(signal_ids))
+
+        if len(signal_ids) < 3:
+            continue
+
         trend_signals = [s for s in signals if s['id'] in signal_ids]
         total_score = sum(s.get('score', 0) for s in trend_signals)
-        total_comments= sum(s.get('comments_count', 0) for s in trend_signals)
+        total_comments = sum(s.get('comments_count', 0) for s in trend_signals)
         signal_count = len(trend_signals)
 
-        momentum_score = (total_score + total_comments)/signal_count
+        momentum_score = (total_score + total_comments) / signal_count
         trend_data.append({
-            'keyword': keyword,
+            'keyword': theme,
             'signal_count': signal_count,
             'momentum_score': momentum_score,
             'signal_ids': signal_ids
