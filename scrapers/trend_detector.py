@@ -59,7 +59,6 @@ def group_signals_into_trends(signals):
         if keywords:
             signal_keywords[signal_id] = keywords
 
-    # Map keywords to themes
     theme_signals = {}
     for signal_id, keywords in signal_keywords.items():
         for keyword in keywords:
@@ -69,10 +68,8 @@ def group_signals_into_trends(signals):
                     theme_signals[theme] = []
                 theme_signals[theme].append(signal_id)
 
-    # Build trend data for themes
     trend_data = []
     for theme, signal_ids in theme_signals.items():
-        # Remove duplicates
         signal_ids = list(set(signal_ids))
 
         if len(signal_ids) < 3:
@@ -129,10 +126,8 @@ def main():
 
     print(f"\nDetected {len(trends)} trends")
 
-    # Save to database
     saved_count = save_trends_to_db(trends)
 
-    # Print for verification
     print(f"\nTop trends:")
     for i, trend in enumerate(trends, 1):
         print(f"{i}. '{trend['keyword']}' - Signals: {trend['signal_count']}, Score: {trend['momentum_score']:.2f}")

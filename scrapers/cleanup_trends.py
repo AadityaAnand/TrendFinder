@@ -13,11 +13,9 @@ def cleanup_trends():
     print("Cleaning up old trends and explanations...")
 
     try:
-        # Delete all trend explanations
         result = supabase.table('trend_explanations').delete().gte('id', 1).execute()
         print(f"✓ Deleted trend explanations")
 
-        # Delete all detected trends
         result = supabase.table('detected_trends').delete().gte('id', 1).execute()
         print(f"✓ Deleted detected trends")
 

@@ -26,7 +26,7 @@ def fetch_story_details(story_id):
     try:
         response = requests.get(url)
         story = response.json()
-        time.sleep(0.1)  # Be polite to the API
+        time.sleep(0.1)
         return story
     except Exception as e:
         print(f"Error fetching story details for ID {story_id}: {e}")
