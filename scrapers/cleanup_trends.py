@@ -9,14 +9,13 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 def cleanup_trends():
-    """Delete all trends and explanations to start fresh"""
     print("Cleaning up old trends and explanations...")
 
     try:
-        result = supabase.table('trend_explanations').delete().gte('id', 1).execute()
+        result = supabase.table('trend_explanations').delete().neq('id', '00000000-0000-0000-0000-000000000000').execute()
         print(f"✓ Deleted trend explanations")
 
-        result = supabase.table('detected_trends').delete().gte('id', 1).execute()
+        result = supabase.table('detected_trends').delete().neq('id', '00000000-0000-0000-0000-000000000000').execute()
         print(f"✓ Deleted detected trends")
 
         print("\n✓ Cleanup complete! Ready to regenerate fresh trends.")
