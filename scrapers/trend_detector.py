@@ -12,6 +12,7 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 DETECTOR_VERSION = 'keyword-scaffold-v1'
 SCORING_VERSION = 'norm-p90-decay7d-v1'
+LIFECYCLE_VERSION = 'lifecycle-v1'
 STOP_WORDS = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
     'of', 'with', 'is', 'are', 'was', 'were', 'been', 'be', 'have', 'has',
     'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may',
@@ -260,6 +261,364 @@ def create_snapshot(signal_count, unique_signal_count, duplicate_count):
         print(f"Error creating snapshot: {e}")
         return None
 
+def get_previous_trend_state(trend_id, current_snapshot_id):
+    """
+    Get the most recent previous appearance of this trend with metadata for comparability
+    Uses trend_id (stable) not keyword (will change with embeddings)
+    """
+    try:
+        # Get current snapshot's run_at time and scoring version
+        current_snapshot = supabase.table('trend_snapshots').select('run_at, scoring_version').eq('id', current_snapshot_id).execute()
+        if not current_snapshot.data:
+            return None
+        current_run_at = current_snapshot.data[0]['run_at']
+
+        # Find previous snapshots before this one
+        prev_snapshots = supabase.table('trend_snapshots').select('id, run_at, scoring_version').lt('run_at', current_run_at).order('run_at', desc=True).limit(10).execute()
+
+        if not prev_snapshots.data:
+            return None
+
+        # Look for this trend_id in previous snapshots (most recent first)
+        for prev_snapshot in prev_snapshots.data:
+            prev_items = supabase.table('trend_snapshot_items').select('*').eq('snapshot_id', prev_snapshot['id']).eq('trend_id', trend_id).execute()
+
+            if prev_items.data:
+                # Calculate time gap
+                from datetime import datetime
+                current_time = datetime.fromisoformat(current_run_at.replace('Z', '+00:00'))
+                prev_time = datetime.fromisoformat(prev_snapshot['run_at'].replace('Z', '+00:00'))
+                time_gap_hours = (current_time - prev_time).total_seconds() / 3600
+
+                return {
+                    'snapshot_id': prev_snapshot['id'],
+                    'momentum': prev_items.data[0]['momentum_score'],
+                    'signals': prev_items.data[0]['signal_count'],
+                    'top3_mean': prev_items.data[0].get('top3_mean', 0),
+                    'scoring_version': prev_items.data[0].get('scoring_version', 'unknown'),
+                    'time_gap_hours': time_gap_hours
+                }
+
+        return None
+    except Exception as e:
+        print(f"Error getting previous state for trend {trend_id}: {e}")
+        return None
+
+def calculate_lifecycle_stage(current_momentum, momentum_change_pct, signal_change, is_first_appearance,
+                              acceleration_comparable, snapshots_seen, days_seen, time_gap_hours):
+    """
+    Determine lifecycle stage with explicit priority rules and reason tracking
+    Returns (stage, confidence, reason, confidence_reasons)
+
+    Rules applied in priority order to ensure mutual exclusivity
+    """
+
+    # Define thresholds (heuristics - should evolve with data)
+    HIGH_MOMENTUM = 0.5
+    MED_MOMENTUM = 0.3
+    STRONG_ACCEL = 20  # %
+    MOD_ACCEL = 10     # %
+
+    confidence_reasons = []
+
+    # Confidence ceiling: cap at 0.7 if insufficient observation diversity
+    confidence_ceiling = 1.0
+    if snapshots_seen < 3:
+        confidence_reasons.append('few_snapshots')
+        confidence_ceiling = min(confidence_ceiling, 0.7)
+    if days_seen < 2:
+        confidence_reasons.append('single_day_only')
+        confidence_ceiling = min(confidence_ceiling, 0.6)
+
+    # Base confidence starts lower
+    base_confidence = 0.8
+
+    # PRIORITY 1: First appearance
+    if is_first_appearance:
+        final_conf = min(0.9, confidence_ceiling)
+        return ('emerging', final_conf, 'first_appearance', confidence_reasons)
+
+    # PRIORITY 2: Acceleration not comparable (version mismatch or time gap issue)
+    if not acceleration_comparable:
+        confidence_reasons.append('acceleration_not_comparable')
+        # Fall back to absolute momentum
+        if current_momentum >= HIGH_MOMENTUM:
+            return ('stable', 0.5, 'high_momentum_no_comparison', confidence_reasons)
+        elif current_momentum >= MED_MOMENTUM:
+            return ('stable', 0.5, 'med_momentum_no_comparison', confidence_reasons)
+        else:
+            return ('stable', 0.5, 'low_momentum_no_comparison', confidence_reasons)
+
+    # PRIORITY 3: Peaking/Declining require ≥24h for high confidence (noise reduction)
+    # Scale stable band by time gap: shorter gaps need tighter bands
+    peaking_declining_threshold = MOD_ACCEL
+    if time_gap_hours is not None and time_gap_hours < 24:
+        # Require tighter stability for short gaps (reduce false peaking from noise)
+        peaking_declining_threshold = MOD_ACCEL * 0.5  # 5% for <24h gaps
+        confidence_reasons.append(f'short_gap_{time_gap_hours:.1f}h_tight_threshold')
+
+    # PRIORITY 3a: Peaking (check before rising to avoid overlap)
+    # High momentum + stable/slightly declining
+    if current_momentum >= HIGH_MOMENTUM and abs(momentum_change_pct) <= peaking_declining_threshold:
+        final_conf = min(base_confidence * 0.95, confidence_ceiling)
+        return ('peaking', final_conf,
+                f'high_momentum={current_momentum:.3f}_stable_accel={momentum_change_pct:+.1f}%',
+                confidence_reasons)
+
+    # PRIORITY 4: Rising (strong acceleration from medium+ base)
+    if momentum_change_pct > STRONG_ACCEL and current_momentum >= MED_MOMENTUM:
+        final_conf = min(base_confidence * 0.95, confidence_ceiling)
+        return ('rising', final_conf,
+                f'strong_accel={momentum_change_pct:+.1f}%_med_momentum={current_momentum:.3f}',
+                confidence_reasons)
+
+    # PRIORITY 5: Declining (strong deceleration from medium+ base)
+    if momentum_change_pct < -STRONG_ACCEL and current_momentum >= MED_MOMENTUM:
+        final_conf = min(base_confidence * 0.9, confidence_ceiling)
+        return ('declining', final_conf,
+                f'strong_decel={momentum_change_pct:+.1f}%_med_momentum={current_momentum:.3f}',
+                confidence_reasons)
+
+    # PRIORITY 6: Fading (low momentum + negative trend + shrinking signals)
+    if current_momentum < MED_MOMENTUM and momentum_change_pct < -MOD_ACCEL:
+        if signal_change is not None and signal_change < 0:
+            final_conf = min(base_confidence * 0.9, confidence_ceiling)
+            return ('fading', final_conf,
+                    f'low_momentum={current_momentum:.3f}_decel={momentum_change_pct:+.1f}%_shrinking_signals={signal_change}',
+                    confidence_reasons)
+        else:
+            final_conf = min(base_confidence * 0.7, confidence_ceiling)
+            return ('fading', final_conf,
+                    f'low_momentum={current_momentum:.3f}_decel={momentum_change_pct:+.1f}%',
+                    confidence_reasons)
+
+    # PRIORITY 7: Emerging (low momentum + positive acceleration + growing signals)
+    if current_momentum < MED_MOMENTUM and momentum_change_pct > MOD_ACCEL:
+        if signal_change is not None and signal_change > 0:
+            final_conf = min(base_confidence * 0.85, confidence_ceiling)
+            return ('emerging', final_conf,
+                    f'low_momentum={current_momentum:.3f}_accel={momentum_change_pct:+.1f}%_growing_signals={signal_change}',
+                    confidence_reasons)
+        else:
+            final_conf = min(base_confidence * 0.6, confidence_ceiling)
+            return ('emerging', final_conf,
+                    f'low_momentum={current_momentum:.3f}_accel={momentum_change_pct:+.1f}%',
+                    confidence_reasons)
+
+    # PRIORITY 8: Stable (everything else - moderate changes or unclear direction)
+    final_conf = min(base_confidence * 0.7, confidence_ceiling)
+    return ('stable', final_conf,
+            f'momentum={current_momentum:.3f}_accel={momentum_change_pct:+.1f}%_default',
+            confidence_reasons)
+
+def calculate_acceleration_score(momentum_change_pct, signal_change):
+    """
+    Composite acceleration score combining momentum and signal changes
+    Returns a score in range [-1, 1] (strictly enforced)
+
+    Weights are versioned: 70% momentum change, 30% signal change
+    """
+    if momentum_change_pct is None:
+        return 0.0
+
+    # Normalize momentum change (cap at ±100% for bounded range)
+    momentum_component = max(-1.0, min(1.0, momentum_change_pct / 100.0))
+
+    # Normalize signal change (±10 signals = full weight)
+    signal_component = 0.0
+    if signal_change is not None:
+        signal_component = max(-1.0, min(1.0, signal_change / 10.0))
+
+    # Weighted combination (versioned in LIFECYCLE_VERSION)
+    acceleration_score = 0.7 * momentum_component + 0.3 * signal_component
+
+    # Strict bounds enforcement
+    return max(-1.0, min(1.0, acceleration_score))
+
+def count_historical_appearances(trend_id):
+    """Count how many snapshots this trend has appeared in (by stable trend_id)"""
+    try:
+        items = supabase.table('trend_snapshot_items').select('snapshot_id').eq('trend_id', trend_id).execute()
+        return len(items.data) if items.data else 0
+    except:
+        return 0
+
+def count_distinct_days(trend_id):
+    """Count distinct calendar days (prevents rerun inflation) - uses stable trend_id"""
+    try:
+        # Get all snapshot items for this trend
+        items = supabase.table('trend_snapshot_items').select('snapshot_id').eq('trend_id', trend_id).execute()
+        if not items.data:
+            return 0
+
+        snapshot_ids = [item['snapshot_id'] for item in items.data]
+
+        # Get snapshot timestamps
+        snapshots = supabase.table('trend_snapshots').select('run_at').in_('id', snapshot_ids).execute()
+        if not snapshots.data:
+            return 0
+
+        # Extract unique dates (UTC-consistent)
+        from datetime import datetime
+        unique_dates = set()
+        for snapshot in snapshots.data:
+            dt = datetime.fromisoformat(snapshot['run_at'].replace('Z', '+00:00'))
+            unique_dates.add(dt.date())
+
+        return len(unique_dates)
+    except Exception as e:
+        print(f"Error counting distinct days for trend {trend_id}: {e}")
+        return 0
+
+def get_first_last_seen(trend_id):
+    """Get first and last seen timestamps for this trend (uses stable trend_id, returns UTC timestamps)"""
+    try:
+        # Get all snapshot items for this trend
+        items = supabase.table('trend_snapshot_items').select('snapshot_id').eq('trend_id', trend_id).execute()
+
+        if not items.data:
+            return None, None
+
+        snapshot_ids = [item['snapshot_id'] for item in items.data]
+
+        # Get snapshot timestamps (UTC)
+        snapshots = supabase.table('trend_snapshots').select('run_at').in_('id', snapshot_ids).order('run_at').execute()
+
+        if not snapshots.data:
+            return None, None
+
+        first_seen = snapshots.data[0]['run_at']
+        last_seen = snapshots.data[-1]['run_at']
+
+        return first_seen, last_seen
+    except Exception as e:
+        print(f"Error getting first/last seen for trend {trend_id}: {e}")
+        return None, None
+
+def save_lifecycle_history(snapshot_id, trend_id, trend_keyword, current_state, prev_state, current_scoring_version):
+    """
+    Save lifecycle tracking data with comprehensive guards for truthful acceleration
+
+    Uses trend_id as stable identity (keywords will change with embeddings)
+    Unique constraint: (snapshot_id, trend_id) ensures append-only, no duplicates
+
+    Guards implemented:
+    - Percent-change unstable near zero (prev momentum < 0.01 threshold)
+    - Scoring version continuity (only compare same versions)
+    - Minimum time gap enforcement (12 hours)
+    - Distinct days tracking (prevents rerun inflation)
+    - Confidence ceilings for insufficient history
+    """
+    try:
+        # Initialize guard tracking
+        acceleration_guards = []
+        confidence_reasons = []
+        acceleration_comparable = True
+
+        # Get historical context early (needed for stage calculation) - uses stable trend_id
+        snapshots_seen = count_historical_appearances(trend_id) + 1  # +1 for current
+        days_seen = count_distinct_days(trend_id) + 1  # +1 for current day
+        first_seen, last_seen = get_first_last_seen(trend_id)
+
+        # Calculate metrics with guards
+        momentum_change_pct = None
+        signal_change = None
+        time_gap_hours = None
+        prev_scoring_version = None
+
+        is_first_appearance = (prev_state is None)
+
+        if prev_state:
+            prev_scoring_version = prev_state.get('scoring_version', 'unknown')
+            time_gap_hours = prev_state.get('time_gap_hours', 0)
+
+            # GUARD 1: Scoring version continuity
+            if prev_scoring_version != current_scoring_version:
+                acceleration_guards.append('version_mismatch')
+                confidence_reasons.append('scoring_formula_changed')
+                acceleration_comparable = False
+
+            # GUARD 2: Minimum time gap (12 hours)
+            if time_gap_hours < 12:
+                acceleration_guards.append(f'time_gap_too_small_{time_gap_hours:.1f}h')
+                confidence_reasons.append('insufficient_time_separation')
+                acceleration_comparable = False
+
+            # GUARD 3: Previous momentum near zero (unstable percent change)
+            MOMENTUM_FLOOR = 0.01  # Below this, use delta instead of percent
+            if prev_state['momentum'] < MOMENTUM_FLOOR:
+                acceleration_guards.append(f'prev_momentum_near_zero_{prev_state["momentum"]:.4f}')
+                confidence_reasons.append('unstable_baseline')
+                # Use absolute delta instead of percent
+                momentum_change_pct = None  # Mark as not comparable
+                acceleration_comparable = False
+            else:
+                # Safe to calculate percent change
+                momentum_change_pct = ((current_state['momentum'] - prev_state['momentum']) / prev_state['momentum']) * 100
+
+            # Signal change always safe (integer delta)
+            signal_change = current_state['signals'] - prev_state['signals']
+
+        # Determine lifecycle stage with all context (includes time_gap for threshold scaling)
+        stage, confidence, lifecycle_reason, stage_confidence_reasons = calculate_lifecycle_stage(
+            current_state['momentum'],
+            momentum_change_pct,
+            signal_change,
+            is_first_appearance,
+            acceleration_comparable,
+            snapshots_seen,
+            days_seen,
+            time_gap_hours
+        )
+
+        # Merge confidence reasons
+        confidence_reasons.extend(stage_confidence_reasons)
+
+        # Calculate acceleration score (safe even if not comparable - will be 0)
+        acceleration_score = calculate_acceleration_score(momentum_change_pct, signal_change)
+
+        # Normalization metadata for auditability (versioned)
+        ACCEL_NORM_DIVISOR = 10  # signal_change / 10
+        ACCEL_MOMENTUM_WEIGHT = 0.7
+        ACCEL_SIGNAL_WEIGHT = 0.3
+
+        # Prepare data with all guards, metadata, and stable identity
+        lifecycle_data = {
+            'snapshot_id': snapshot_id,
+            'trend_id': trend_id,  # Stable identity (source of truth)
+            'trend_keyword': trend_keyword,  # Human-readable only
+            'current_momentum': current_state['momentum'],
+            'current_signals': current_state['signals'],
+            'current_top3_mean': current_state.get('top3_mean'),
+            'prev_momentum': prev_state['momentum'] if prev_state else None,
+            'prev_signals': prev_state['signals'] if prev_state else None,
+            'prev_snapshot_id': prev_state['snapshot_id'] if prev_state else None,
+            'prev_scoring_version': prev_scoring_version,
+            'time_gap_hours': time_gap_hours,
+            'momentum_change_pct': momentum_change_pct,
+            'signal_change': signal_change,
+            'acceleration_score': acceleration_score,
+            'acceleration_comparable': acceleration_comparable,
+            'acceleration_guards': acceleration_guards if acceleration_guards else None,
+            'lifecycle_stage': stage,
+            'stage_confidence': confidence,
+            'lifecycle_reason': lifecycle_reason,
+            'confidence_reasons': confidence_reasons if confidence_reasons else None,
+            'snapshots_seen': snapshots_seen,
+            'days_seen': days_seen,
+            'first_seen_at': first_seen,
+            'last_seen_at': last_seen,
+            'lifecycle_version': LIFECYCLE_VERSION,
+            # Acceleration score normalization metadata (for auditability)
+            'accel_norm_divisor': ACCEL_NORM_DIVISOR,
+            'accel_momentum_weight': ACCEL_MOMENTUM_WEIGHT,
+            'accel_signal_weight': ACCEL_SIGNAL_WEIGHT
+        }
+
+        supabase.table('trend_lifecycle_history').insert(lifecycle_data).execute()
+    except Exception as e:
+        print(f"Error saving lifecycle history for {trend_keyword}: {e}")
+
 def save_trends_to_db(trends, snapshot_id):
     saved_count = 0
     for trend in trends:
@@ -296,6 +655,16 @@ def save_trends_to_db(trends, snapshot_id):
                 trend.get('keyword', '')
             )
             save_trend_evidence(snapshot_id, trend_id, trend['signal_ids'])
+
+            # Track lifecycle evolution with guards (uses stable trend_id)
+            current_state = {
+                'momentum': trend['momentum_score'],
+                'signals': trend['signal_count'],
+                'top3_mean': trend.get('topk_mean', 0.0)
+            }
+            prev_state = get_previous_trend_state(trend_id, snapshot_id)
+            save_lifecycle_history(snapshot_id, trend_id, trend['keyword'], current_state, prev_state, SCORING_VERSION)
+
             saved_count += 1
         except Exception as e:
             print(f"Error saving trend '{trend['keyword']}': {e}")
