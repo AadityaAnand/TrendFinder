@@ -1,10 +1,5 @@
--- Day 6-7: RPC functions for embedding operations
--- Run after enabling pgvector extension
-
--- Enable pgvector extension (run as superuser if needed)
 CREATE EXTENSION IF NOT EXISTS vector;
 
--- Function to get signals without embeddings efficiently
 CREATE OR REPLACE FUNCTION get_signals_without_embeddings(
     cutoff_date TIMESTAMP WITH TIME ZONE,
     model_name TEXT,
@@ -25,7 +20,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Function to find similar signals by embedding
 CREATE OR REPLACE FUNCTION find_similar_signals(
     query_embedding VECTOR(384),
     similarity_threshold NUMERIC DEFAULT 0.7,
@@ -50,7 +44,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Function to get cluster members with their embeddings
 CREATE OR REPLACE FUNCTION get_cluster_with_embeddings(
     p_cluster_id UUID
 )
@@ -79,7 +72,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Grant execute permissions
 GRANT EXECUTE ON FUNCTION get_signals_without_embeddings TO authenticated;
 GRANT EXECUTE ON FUNCTION get_signals_without_embeddings TO service_role;
 GRANT EXECUTE ON FUNCTION find_similar_signals TO authenticated;

@@ -67,13 +67,13 @@ export default async function ExplainedTrendsPage() {
                 <div>
                   <span className="text-gray-500">Momentum:</span>
                   <span className="ml-2 font-bold text-gray-900">
-                    {trend.momentum_score.toFixed(0)}
+                    {(trend.momentum_score ?? 0).toFixed(0)}
                   </span>
                 </div>
                 <div>
                   <span className="text-gray-500">Signals:</span>
                   <span className="ml-2 font-bold text-gray-900">
-                    {trend.signal_count}
+                    {trend.signal_count ?? 0}
                   </span>
                 </div>
               </div>
