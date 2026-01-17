@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import Link from 'next/link'
 
 // Current supported versions - filter out old data from different eras
 const SUPPORTED_LIFECYCLE_VERSION = 'lifecycle-v1'
@@ -149,9 +150,10 @@ export default async function DetectedTrendsPage() {
               (item.stage_confidence || 0) >= MIN_CONFIDENCE_THRESHOLD
 
             return (
-              <div
+              <Link
                 key={item.id}
-                className="border rounded-lg p-6 hover:shadow-lg transition-shadow bg-white"
+                href={`/trends/${item.trend_id}`}
+                className="border rounded-lg p-6 hover:shadow-lg transition-shadow bg-white block"
               >
                 <div className="flex items-start justify-between mb-4">
                   <h2 className="text-xl font-semibold capitalize">
@@ -209,7 +211,7 @@ export default async function DetectedTrendsPage() {
                     </span>
                   </div>
                 </div>
-              </div>
+              </Link>
             )
           })
         ) : (
