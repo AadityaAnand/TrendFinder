@@ -3,6 +3,12 @@ import Link from 'next/link'
 
 const SUPPORTED_SCORING_VERSION = 'norm-p90-decay7d-v1'
 
+interface OpportunityExplanation {
+  why_this_trend: string
+  why_now: string
+  whats_the_risk: string
+}
+
 interface Opportunity {
   id: string
   trend_id: string
@@ -16,6 +22,7 @@ interface Opportunity {
   stage: string
   stage_confidence: number
   signals: { title: string; url: string; source: string; score: number }[]
+  explanation: OpportunityExplanation | null
 }
 
 interface TrendWatching {
@@ -99,6 +106,20 @@ async function getOpportunities(): Promise<PageData> {
 
   const signalMap = new Map(signals?.map(s => [s.id, s]) || [])
 
+  const qualifiedIds = qualified.map(o => o.id)
+  const { data: explanations } = await supabase
+    .from('opportunity_explanations')
+    .select('opportunity_id, why_this_trend, why_now, whats_the_risk')
+    .in('opportunity_id', qualifiedIds)
+
+  const explanationMap = new Map(
+    explanations?.map(e => [e.opportunity_id, {
+      why_this_trend: e.why_this_trend,
+      why_now: e.why_now,
+      whats_the_risk: e.whats_the_risk
+    }]) || []
+  )
+
   const opportunities: Opportunity[] = qualified.slice(0, 3).map(o => {
     const lifecycle = lifecycleMap.get(o.trend_id)
     const trendSignalIds = signalIdsByTrend.get(o.trend_id) || []
@@ -124,7 +145,8 @@ async function getOpportunities(): Promise<PageData> {
         url: s.url,
         source: s.source,
         score: s.score
-      }))
+      })),
+      explanation: explanationMap.get(o.id) || null
     }
   })
 
@@ -194,6 +216,19 @@ function OpportunityCard({ opportunity, index }: { opportunity: Opportunity; ind
             </div>
           )}
 
+          {opportunity.explanation && (
+            <div className="mb-4 space-y-3">
+              <div>
+                <h4 className="text-sm font-semibold text-gray-700 mb-1">Why this trend?</h4>
+                <p className="text-gray-600 text-sm">{opportunity.explanation.why_this_trend}</p>
+              </div>
+              <div>
+                <h4 className="text-sm font-semibold text-gray-700 mb-1">Why now?</h4>
+                <p className="text-gray-600 text-sm">{opportunity.explanation.why_now}</p>
+              </div>
+            </div>
+          )}
+
           {opportunity.signals.length > 0 && (
             <div className="mb-4">
               <h4 className="text-sm font-semibold text-gray-700 mb-2">Evidence</h4>
@@ -216,10 +251,10 @@ function OpportunityCard({ opportunity, index }: { opportunity: Opportunity; ind
             </div>
           )}
 
-          <div className="text-sm text-gray-500 border-t border-gray-100 pt-4 mt-4">
+          <div className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3 mt-4">
             <span className="font-medium">What could be wrong:</span>{' '}
-            Demand signals based on title heuristics only. Action suggestions are automated.
-            Verify with deeper research before building.
+            {opportunity.explanation?.whats_the_risk ||
+              'Demand signals based on title heuristics only. Action suggestions are automated. Verify with deeper research before building.'}
           </div>
         </div>
       </div>
@@ -318,11 +353,15 @@ export default async function HomePage() {
           </>
         ) : (
           <div className="border border-amber-200 bg-amber-50 rounded-lg p-6 text-center">
-            <p className="text-amber-800">
-              No opportunities met our criteria today.
+            <p className="text-amber-800 font-medium">
+              No opportunities qualified yet.
             </p>
-            <p className="text-amber-600 text-sm mt-2">
-              Opportunities require: 2+ independent sources, demand signals, and clear actions.
+            <p className="text-amber-700 text-sm mt-2">
+              All trends are still gathering data. Opportunities require: comparable acceleration data,
+              2+ independent artifacts, demand signals, and specific actions.
+            </p>
+            <p className="text-amber-600 text-xs mt-3">
+              This is expected for new deployments — trends need multiple daily snapshots before qualification.
             </p>
           </div>
         )}
