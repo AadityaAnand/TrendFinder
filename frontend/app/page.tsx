@@ -315,6 +315,12 @@ export default async function HomePage() {
           </p>
           <div className="flex gap-4">
             <Link
+              href="/for-you"
+              className="px-6 py-3 bg-emerald-600 text-white font-medium rounded-lg hover:bg-emerald-700 transition"
+            >
+              For You
+            </Link>
+            <Link
               href="/trends/detected"
               className="px-6 py-3 bg-gray-900 text-white font-medium rounded-lg hover:bg-gray-800 transition"
             >
