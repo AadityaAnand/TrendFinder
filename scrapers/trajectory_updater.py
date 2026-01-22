@@ -49,18 +49,39 @@ def get_all_trends() -> list[dict]:
 
 
 def get_trend_history(trend_id: str) -> list[dict]:
+    # Get snapshot items for this trend
     response = supabase.table('trend_snapshot_items') \
-        .select('''
-            snapshot_id,
-            momentum_score,
-            signal_count,
-            top3_mean,
-            trend_snapshots!inner(run_at, scoring_version)
-        ''') \
+        .select('snapshot_id, momentum_score, signal_count, top3_mean') \
         .eq('trend_id', trend_id) \
-        .order('trend_snapshots(run_at)', desc=False) \
         .execute()
-    return response.data or []
+
+    if not response.data:
+        return []
+
+    # Get snapshot timestamps separately
+    snapshot_ids = [item['snapshot_id'] for item in response.data]
+    snapshots_resp = supabase.table('trend_snapshots') \
+        .select('id, run_at, scoring_version') \
+        .in_('id', snapshot_ids) \
+        .execute()
+
+    snapshot_map = {s['id']: s for s in (snapshots_resp.data or [])}
+
+    # Merge and sort
+    results = []
+    for item in response.data:
+        snapshot = snapshot_map.get(item['snapshot_id'], {})
+        results.append({
+            **item,
+            'trend_snapshots': {
+                'run_at': snapshot.get('run_at'),
+                'scoring_version': snapshot.get('scoring_version')
+            }
+        })
+
+    # Sort by run_at
+    results.sort(key=lambda x: x['trend_snapshots'].get('run_at') or '')
+    return results
 
 
 def get_lifecycle_history(trend_id: str) -> list[dict]:

@@ -1,7 +1,17 @@
 import re
 from typing import Optional
 
-RELEVANCE_VERSION = 'relevance-v1'
+RELEVANCE_VERSION = 'relevance-v2'
+
+# Default weights (can be overridden by learning engine)
+DEFAULT_WEIGHTS = {
+    'role_match': 0.25,
+    'domain_match': 0.25,
+    'stack_match': 0.20,
+    'effort_fit': 0.15,
+    'risk_fit': 0.10,
+    'avoid_penalty': 0.30,
+}
 
 ROLE_KEYWORDS = {
     'backend': ['api', 'backend', 'database', 'server', 'rest', 'graphql', 'postgres', 'mysql', 'redis', 'queue', 'microservice'],
@@ -276,8 +286,19 @@ def compute_user_relevance(
     opportunity: dict,
     preferences: dict,
     trend_data: dict,
-    lifecycle: Optional[dict] = None
+    lifecycle: Optional[dict] = None,
+    custom_weights: Optional[dict] = None
 ) -> dict:
+    """
+    Compute relevance score for an opportunity given user preferences.
+
+    Args:
+        opportunity: The opportunity dict
+        preferences: User preferences dict
+        trend_data: Trend data with theme and signals
+        lifecycle: Optional lifecycle data
+        custom_weights: Optional custom weights from learning engine (Phase 5)
+    """
     target_roles = preferences.get('target_roles', [])
     domains = preferences.get('domains', [])
     tech_stack = preferences.get('tech_stack', [])
@@ -295,33 +316,55 @@ def compute_user_relevance(
         'avoid_penalty': compute_avoid_penalty(trend_data, avoid_topics),
     }
 
+    # Use custom weights if provided, otherwise use defaults
+    weights = custom_weights if custom_weights else DEFAULT_WEIGHTS
+
     relevance_score = (
-        0.25 * scores['role_match'] +
-        0.25 * scores['domain_match'] +
-        0.20 * scores['stack_match'] +
-        0.15 * scores['effort_fit'] +
-        0.10 * scores['risk_fit'] -
-        0.30 * scores['avoid_penalty']
+        weights['role_match'] * scores['role_match'] +
+        weights['domain_match'] * scores['domain_match'] +
+        weights['stack_match'] * scores['stack_match'] +
+        weights['effort_fit'] * scores['effort_fit'] +
+        weights['risk_fit'] * scores['risk_fit'] -
+        weights['avoid_penalty'] * scores['avoid_penalty']
     )
 
     relevance_score = max(0.0, min(1.0, relevance_score))
 
     fit_reasons = generate_fit_reasons(scores, preferences, trend_data, opportunity, lifecycle)
 
-    return {
+    # Include weight info if using custom weights
+    result = {
         'relevance_score': relevance_score,
         'breakdown': scores,
         'fit_reasons': fit_reasons,
         'relevance_version': RELEVANCE_VERSION
     }
 
+    if custom_weights:
+        result['weights_used'] = 'learned'
+    else:
+        result['weights_used'] = 'default'
+
+    return result
+
 
 def personalize_opportunities(
     opportunities: list[dict],
     preferences: dict,
     trend_data_map: dict,
-    lifecycle_map: dict
+    lifecycle_map: dict,
+    custom_weights: Optional[dict] = None
 ) -> list[dict]:
+    """
+    Personalize and rank opportunities for a user.
+
+    Args:
+        opportunities: List of qualified opportunities
+        preferences: User preferences
+        trend_data_map: Map of trend_id -> trend data
+        lifecycle_map: Map of trend_id -> lifecycle data
+        custom_weights: Optional learned weights from Phase 5
+    """
     personalized = []
 
     for opp in opportunities:
@@ -329,7 +372,10 @@ def personalize_opportunities(
         trend_data = trend_data_map.get(trend_id, {})
         lifecycle = lifecycle_map.get(trend_id)
 
-        relevance = compute_user_relevance(opp, preferences, trend_data, lifecycle)
+        relevance = compute_user_relevance(
+            opp, preferences, trend_data, lifecycle,
+            custom_weights=custom_weights
+        )
 
         global_score = opp.get('opportunity_score', 0)
         personalized_score = 0.6 * global_score + 0.4 * relevance['relevance_score']
@@ -341,6 +387,7 @@ def personalize_opportunities(
             'fit_reasons': relevance['fit_reasons'],
             'personalized_score': personalized_score,
             'global_score': global_score,
+            'weights_used': relevance.get('weights_used', 'default'),
         })
 
     personalized.sort(key=lambda x: x['personalized_score'], reverse=True)
