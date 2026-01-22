@@ -12,10 +12,26 @@ const VALID_OUTCOME_TYPES = [
 
 type OutcomeType = typeof VALID_OUTCOME_TYPES[number]
 
+// Valid drop-off stages for abandoned outcomes
+const VALID_DROP_OFF_STAGES = ['explored', 'started', 'midway', 'near_complete'] as const
+
 // POST /api/outcomes - Record an opportunity outcome
 export async function POST(request: Request) {
   const body = await request.json()
-  const { user_id, opportunity_id, outcome_type, note, time_spent_days } = body
+  const {
+    user_id,
+    opportunity_id,
+    outcome_type,
+    note,
+    time_spent_days,
+    // Phase 6 enhanced fields
+    quality_score,
+    time_to_first_action,
+    time_to_completion,
+    drop_off_stage,
+    success_factors,
+    failure_factors
+  } = body
 
   if (!user_id || !opportunity_id || !outcome_type) {
     return NextResponse.json(
@@ -27,6 +43,22 @@ export async function POST(request: Request) {
   if (!VALID_OUTCOME_TYPES.includes(outcome_type as OutcomeType)) {
     return NextResponse.json(
       { error: `Invalid outcome_type. Must be one of: ${VALID_OUTCOME_TYPES.join(', ')}` },
+      { status: 400 }
+    )
+  }
+
+  // Validate quality_score if provided
+  if (quality_score !== undefined && (quality_score < 1 || quality_score > 5)) {
+    return NextResponse.json(
+      { error: 'quality_score must be between 1 and 5' },
+      { status: 400 }
+    )
+  }
+
+  // Validate drop_off_stage if provided
+  if (drop_off_stage && !VALID_DROP_OFF_STAGES.includes(drop_off_stage)) {
+    return NextResponse.json(
+      { error: `Invalid drop_off_stage. Must be one of: ${VALID_DROP_OFF_STAGES.join(', ')}` },
       { status: 400 }
     )
   }
@@ -45,22 +77,28 @@ export async function POST(request: Request) {
     )
   }
 
+  // Build outcome data
+  const outcomeData: Record<string, unknown> = {
+    user_id,
+    opportunity_id,
+    outcome_type,
+    note: note || null,
+    time_spent_days: time_spent_days || null,
+    recorded_at: new Date().toISOString()
+  }
+
+  // Add Phase 6 enhanced fields if provided
+  if (quality_score !== undefined) outcomeData.quality_score = quality_score
+  if (time_to_first_action !== undefined) outcomeData.time_to_first_action = time_to_first_action
+  if (time_to_completion !== undefined) outcomeData.time_to_completion = time_to_completion
+  if (drop_off_stage) outcomeData.drop_off_stage = drop_off_stage
+  if (success_factors) outcomeData.success_factors = success_factors
+  if (failure_factors) outcomeData.failure_factors = failure_factors
+
   // Upsert outcome
   const { data: outcome, error } = await supabase
     .from('opportunity_outcomes')
-    .upsert(
-      {
-        user_id,
-        opportunity_id,
-        outcome_type,
-        note: note || null,
-        time_spent_days: time_spent_days || null,
-        recorded_at: new Date().toISOString()
-      },
-      {
-        onConflict: 'user_id,opportunity_id'
-      }
-    )
+    .upsert(outcomeData, { onConflict: 'user_id,opportunity_id' })
     .select()
     .single()
 
@@ -74,6 +112,7 @@ export async function POST(request: Request) {
   return NextResponse.json({
     id: outcome.id,
     outcome_type: outcome.outcome_type,
+    quality_score: outcome.quality_score,
     message: 'Outcome recorded successfully'
   }, { status: 201 })
 }

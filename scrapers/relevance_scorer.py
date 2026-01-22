@@ -353,7 +353,8 @@ def personalize_opportunities(
     preferences: dict,
     trend_data_map: dict,
     lifecycle_map: dict,
-    custom_weights: Optional[dict] = None
+    custom_weights: Optional[dict] = None,
+    outcome_modifiers: Optional[dict] = None
 ) -> list[dict]:
     """
     Personalize and rank opportunities for a user.
@@ -364,6 +365,8 @@ def personalize_opportunities(
         trend_data_map: Map of trend_id -> trend data
         lifecycle_map: Map of trend_id -> lifecycle data
         custom_weights: Optional learned weights from Phase 5
+        outcome_modifiers: Optional outcome modifiers from Phase 6
+            Map of trend_id -> { modifier, factors, has_data }
     """
     personalized = []
 
@@ -378,17 +381,36 @@ def personalize_opportunities(
         )
 
         global_score = opp.get('opportunity_score', 0)
+
+        # Apply outcome modifier if available (Phase 6)
+        outcome_data = None
+        if outcome_modifiers and trend_id in outcome_modifiers:
+            outcome_data = outcome_modifiers[trend_id]
+            if outcome_data.get('has_data'):
+                modifier = outcome_data.get('modifier', 0)
+                # Apply modifier to global score
+                global_score = global_score * (1 + modifier)
+                global_score = max(0.0, min(1.0, global_score))
+
         personalized_score = 0.6 * global_score + 0.4 * relevance['relevance_score']
 
-        personalized.append({
+        result = {
             **opp,
             'relevance_score': relevance['relevance_score'],
             'relevance_breakdown': relevance['breakdown'],
             'fit_reasons': relevance['fit_reasons'],
             'personalized_score': personalized_score,
-            'global_score': global_score,
+            'global_score': opp.get('opportunity_score', 0),  # Original score
             'weights_used': relevance.get('weights_used', 'default'),
-        })
+        }
+
+        # Include outcome data if present
+        if outcome_data and outcome_data.get('has_data'):
+            result['outcome_modifier'] = outcome_data['modifier']
+            result['outcome_factors'] = outcome_data.get('factors', {})
+            result['adjusted_global_score'] = global_score
+
+        personalized.append(result)
 
     personalized.sort(key=lambda x: x['personalized_score'], reverse=True)
 

@@ -179,6 +179,88 @@ function computeRelevanceScore(
   return { relevance_score, breakdown: scores, fit_reasons }
 }
 
+// Archetype modifiers for outcome-aware scoring (Phase 6)
+const ARCHETYPE_MODIFIERS: Record<string, number> = {
+  proven_winner: 0.20,
+  fast_mvp: 0.15,
+  infra_bet: 0.05,
+  content_wedge: 0.0,
+  execution_trap: -0.25,
+}
+
+const MIN_OUTCOMES_FOR_ADJUSTMENT = 3
+
+interface OutcomeModifier {
+  modifier: number
+  factors: Record<string, string>
+  has_data: boolean
+  archetype?: string
+}
+
+function computeOutcomeModifier(outcomeStats: Record<string, unknown> | null): OutcomeModifier {
+  if (!outcomeStats) {
+    return { modifier: 0, factors: {}, has_data: false }
+  }
+
+  const totalStarts = (outcomeStats.total_user_starts as number) || 0
+  if (totalStarts < MIN_OUTCOMES_FOR_ADJUSTMENT) {
+    return { modifier: 0, factors: {}, has_data: false }
+  }
+
+  const factors: Record<string, string> = {}
+  let modifier = 0
+
+  const archetype = outcomeStats.trend_archetype as string
+  const completionRate = (outcomeStats.avg_completion_rate as number) || 0
+  const avgQuality = (outcomeStats.avg_quality_score as number) || 0
+  const difficulty = (outcomeStats.execution_difficulty_score as number) || 5
+
+  // Archetype factor (most impactful)
+  if (archetype && ARCHETYPE_MODIFIERS[archetype] !== undefined) {
+    const archetypeMod = ARCHETYPE_MODIFIERS[archetype]
+    modifier += archetypeMod
+    if (archetypeMod > 0) {
+      factors.archetype = `Trend type: ${archetype.replace(/_/g, ' ')} (boost)`
+    } else if (archetypeMod < 0) {
+      factors.archetype = `Trend type: ${archetype.replace(/_/g, ' ')} (caution)`
+    }
+  }
+
+  // Completion rate factor
+  if (completionRate >= 0.5) {
+    modifier += 0.08
+    factors.completion = `Strong completion history (${Math.round(completionRate * 100)}%)`
+  } else if (completionRate < 0.2) {
+    modifier -= 0.10
+    factors.completion = `Low completion history (${Math.round(completionRate * 100)}%)`
+  }
+
+  // Quality factor
+  if (avgQuality >= 4) {
+    modifier += 0.07
+    factors.quality = `High quality track record (avg ${avgQuality.toFixed(1)}/5)`
+  } else if (avgQuality < 2.5) {
+    modifier -= 0.05
+    factors.quality = `Quality concerns (avg ${avgQuality.toFixed(1)}/5)`
+  }
+
+  // Difficulty warning
+  if (difficulty >= 7) {
+    factors.difficulty = `Execution difficulty: ${Math.round(difficulty)}/10 (challenging)`
+    modifier -= 0.03
+  }
+
+  // Cap the modifier
+  modifier = Math.max(-0.30, Math.min(0.30, modifier))
+
+  return {
+    modifier: Math.round(modifier * 1000) / 1000,
+    factors,
+    has_data: true,
+    archetype
+  }
+}
+
 // GET /api/opportunities/personalized?user_id=xxx
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
@@ -260,6 +342,20 @@ export async function GET(request: Request) {
       .map(f => f.opportunity_id)
   )
 
+  // Get trend IDs for outcome stats lookup (Phase 6)
+  const trendIds = [...new Set((opportunities || []).map(o => o.trend_id).filter(Boolean))]
+
+  // Fetch outcome stats for all trends
+  const { data: outcomeStats } = await supabase
+    .from('trend_outcome_stats')
+    .select('*')
+    .in('trend_id', trendIds)
+
+  const outcomeStatsMap: Record<string, Record<string, unknown>> = {}
+  for (const stat of (outcomeStats || [])) {
+    outcomeStatsMap[stat.trend_id] = stat
+  }
+
   // Score and rank opportunities
   const personalizedOpportunities = (opportunities || [])
     .filter(opp => !dismissedIds.has(opp.id))
@@ -270,19 +366,41 @@ export async function GET(request: Request) {
         preferences
       )
 
-      // Personalized score: 60% global quality, 40% relevance
-      const personalized_score = 0.6 * (opp.opportunity_score || 0) + 0.4 * relevance_score
+      // Compute outcome modifier (Phase 6)
+      const trendOutcomeStats = outcomeStatsMap[opp.trend_id] || null
+      const outcomeModifier = computeOutcomeModifier(trendOutcomeStats)
 
-      return {
+      // Apply outcome modifier to global score
+      let adjustedGlobalScore = opp.opportunity_score || 0
+      if (outcomeModifier.has_data) {
+        adjustedGlobalScore = adjustedGlobalScore * (1 + outcomeModifier.modifier)
+        adjustedGlobalScore = Math.max(0, Math.min(1, adjustedGlobalScore))
+      }
+
+      // Personalized score: 60% (outcome-adjusted) global quality, 40% relevance
+      const personalized_score = 0.6 * adjustedGlobalScore + 0.4 * relevance_score
+
+      const result: Record<string, unknown> = {
         ...opp,
         relevance_score,
         relevance_breakdown: breakdown,
         fit_reasons,
         personalized_score,
+        global_score: opp.opportunity_score,
         is_saved: savedIds.has(opp.id)
       }
+
+      // Include outcome data if present
+      if (outcomeModifier.has_data) {
+        result.outcome_modifier = outcomeModifier.modifier
+        result.outcome_factors = outcomeModifier.factors
+        result.outcome_archetype = outcomeModifier.archetype
+        result.adjusted_global_score = adjustedGlobalScore
+      }
+
+      return result
     })
-    .sort((a, b) => b.personalized_score - a.personalized_score)
+    .sort((a, b) => (b.personalized_score as number) - (a.personalized_score as number))
     .slice(0, limit)
 
   return NextResponse.json({
