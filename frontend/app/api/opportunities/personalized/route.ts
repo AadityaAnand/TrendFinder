@@ -342,10 +342,11 @@ export async function GET(request: Request) {
       .map(f => f.opportunity_id)
   )
 
-  // Get trend IDs for outcome stats lookup (Phase 6)
+  // Get trend IDs and opportunity IDs for lookups
   const trendIds = [...new Set((opportunities || []).map(o => o.trend_id).filter(Boolean))]
+  const oppIds = (opportunities || []).map(o => o.id).filter(Boolean)
 
-  // Fetch outcome stats for all trends
+  // Fetch outcome stats for all trends (Phase 6)
   const { data: outcomeStats } = await supabase
     .from('trend_outcome_stats')
     .select('*')
@@ -354,6 +355,26 @@ export async function GET(request: Request) {
   const outcomeStatsMap: Record<string, Record<string, unknown>> = {}
   for (const stat of (outcomeStats || [])) {
     outcomeStatsMap[stat.trend_id] = stat
+  }
+
+  // Fetch confidence predictions for opportunities (Phase 7)
+  const { data: confidencePredictions } = await supabase
+    .from('confidence_predictions')
+    .select('entity_id, prediction_type, confidence_score, confidence_interval_low, confidence_interval_high, confidence_factors')
+    .eq('entity_type', 'opportunity')
+    .in('entity_id', oppIds)
+    .eq('snapshot_id', snapshot.id)
+
+  const confidenceMap: Record<string, Record<string, unknown>> = {}
+  for (const pred of (confidencePredictions || [])) {
+    if (!confidenceMap[pred.entity_id]) {
+      confidenceMap[pred.entity_id] = {}
+    }
+    confidenceMap[pred.entity_id][pred.prediction_type] = {
+      confidence: pred.confidence_score,
+      interval: [pred.confidence_interval_low, pred.confidence_interval_high],
+      factors: pred.confidence_factors
+    }
   }
 
   // Score and rank opportunities
@@ -390,12 +411,18 @@ export async function GET(request: Request) {
         is_saved: savedIds.has(opp.id)
       }
 
-      // Include outcome data if present
+      // Include outcome data if present (Phase 6)
       if (outcomeModifier.has_data) {
         result.outcome_modifier = outcomeModifier.modifier
         result.outcome_factors = outcomeModifier.factors
         result.outcome_archetype = outcomeModifier.archetype
         result.adjusted_global_score = adjustedGlobalScore
+      }
+
+      // Include confidence predictions if present (Phase 7)
+      const oppConfidence = confidenceMap[opp.id]
+      if (oppConfidence) {
+        result.confidence_predictions = oppConfidence
       }
 
       return result
