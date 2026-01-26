@@ -377,6 +377,24 @@ export async function GET(request: Request) {
     }
   }
 
+  // Fetch timing signals for trends (Phase 8)
+  const { data: timingSignals } = await supabase
+    .from('trend_timing_signals')
+    .select('trend_id, timing_label, timing_confidence, timing_reasons, timing_guards, expiry_risk')
+    .in('trend_id', trendIds)
+    .eq('snapshot_id', snapshot.id)
+
+  const timingMap: Record<string, Record<string, unknown>> = {}
+  for (const signal of (timingSignals || [])) {
+    timingMap[signal.trend_id] = {
+      label: signal.timing_label,
+      confidence: signal.timing_confidence,
+      reasons: signal.timing_reasons,
+      guards: signal.timing_guards,
+      expiry_risk: signal.expiry_risk
+    }
+  }
+
   // Score and rank opportunities
   const personalizedOpportunities = (opportunities || [])
     .filter(opp => !dismissedIds.has(opp.id))
@@ -423,6 +441,12 @@ export async function GET(request: Request) {
       const oppConfidence = confidenceMap[opp.id]
       if (oppConfidence) {
         result.confidence_predictions = oppConfidence
+      }
+
+      // Include timing data if present (Phase 8)
+      const trendTiming = timingMap[opp.trend_id]
+      if (trendTiming) {
+        result.timing = trendTiming
       }
 
       return result
