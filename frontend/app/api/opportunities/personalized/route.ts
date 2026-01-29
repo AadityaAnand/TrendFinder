@@ -395,6 +395,49 @@ export async function GET(request: Request) {
     }
   }
 
+  // Fetch competitive intelligence for trends (Phase 9)
+  const { data: competitiveIntel } = await supabase
+    .from('trend_competitive_intelligence')
+    .select('trend_id, saturation_score, competition_level, confidence, confidence_reasons')
+    .in('trend_id', trendIds)
+    .eq('snapshot_id', snapshot.id)
+
+  const competitionMap: Record<string, Record<string, unknown>> = {}
+  for (const intel of (competitiveIntel || [])) {
+    competitionMap[intel.trend_id] = intel
+  }
+
+  // Fetch wedges for highly competitive trends (Phase 9)
+  const highCompTrends = (competitiveIntel || [])
+    .filter(i => i.competition_level === 'high')
+    .map(i => i.trend_id)
+
+  let wedgeMap: Record<string, Array<Record<string, unknown>>> = {}
+  if (highCompTrends.length > 0) {
+    const { data: wedges } = await supabase
+      .from('trend_wedges')
+      .select('trend_id, wedge_type, trigger_reason, confidence')
+      .in('trend_id', highCompTrends)
+      .eq('snapshot_id', snapshot.id)
+
+    for (const w of (wedges || [])) {
+      if (!wedgeMap[w.trend_id]) wedgeMap[w.trend_id] = []
+      wedgeMap[w.trend_id].push({
+        wedge_type: w.wedge_type,
+        trigger_reason: w.trigger_reason,
+        confidence: w.confidence
+      })
+    }
+  }
+
+  // Competition score modifiers (Phase 9)
+  const COMPETITION_MODIFIERS: Record<string, number> = {
+    high: -0.20,
+    moderate: -0.10,
+    low: 0,
+    uncertain: 0
+  }
+
   // Score and rank opportunities
   const personalizedOpportunities = (opportunities || [])
     .filter(opp => !dismissedIds.has(opp.id))
@@ -416,7 +459,16 @@ export async function GET(request: Request) {
         adjustedGlobalScore = Math.max(0, Math.min(1, adjustedGlobalScore))
       }
 
-      // Personalized score: 60% (outcome-adjusted) global quality, 40% relevance
+      // Apply competition modifier (Phase 9)
+      const competitionData = competitionMap[opp.trend_id]
+      const competitionLevel = (competitionData?.competition_level as string) || 'uncertain'
+      const competitionModifier = COMPETITION_MODIFIERS[competitionLevel] || 0
+      if (competitionModifier !== 0) {
+        adjustedGlobalScore = adjustedGlobalScore * (1 + competitionModifier)
+        adjustedGlobalScore = Math.max(0, Math.min(1, adjustedGlobalScore))
+      }
+
+      // Personalized score: 60% (outcome+competition adjusted) global quality, 40% relevance
       const personalized_score = 0.6 * adjustedGlobalScore + 0.4 * relevance_score
 
       const result: Record<string, unknown> = {
@@ -446,7 +498,26 @@ export async function GET(request: Request) {
       // Include timing data if present (Phase 8)
       const trendTiming = timingMap[opp.trend_id]
       if (trendTiming) {
-        result.timing = trendTiming
+        // Phase 9: Override timing if early_edge + high competition
+        if (trendTiming.label === 'early_edge' && competitionLevel === 'high') {
+          result.timing = { ...trendTiming, label: 'crowded', original_label: 'early_edge' }
+        } else {
+          result.timing = trendTiming
+        }
+      }
+
+      // Include competition data if present (Phase 9)
+      if (competitionData) {
+        result.competition = {
+          level: competitionLevel,
+          saturation_score: competitionData.saturation_score,
+          confidence: competitionData.confidence,
+          modifier: competitionModifier
+        }
+        const trendWedges = wedgeMap[opp.trend_id]
+        if (trendWedges && trendWedges.length > 0) {
+          result.wedges = trendWedges
+        }
       }
 
       return result

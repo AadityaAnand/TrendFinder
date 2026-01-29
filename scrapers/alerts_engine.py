@@ -376,6 +376,121 @@ def detect_stage_transitions(snapshot_id: str) -> list[dict]:
 
 
 # ============================================================
+# COMPETITION ALERTS (Phase 9)
+# ============================================================
+
+def detect_competition_alerts(
+    snapshot_id: str,
+    prev_snapshot_id: Optional[str],
+    rules: dict
+) -> list[dict]:
+    """Detect competition-related alerts."""
+    supabase = get_supabase()
+
+    alerts = []
+
+    # Get current competition data
+    current_response = supabase.table('trend_competitive_intelligence') \
+        .select('trend_id, competition_level, saturation_score, confidence') \
+        .eq('snapshot_id', snapshot_id) \
+        .execute()
+
+    current_data = {c['trend_id']: c for c in (current_response.data or [])}
+
+    # Get previous competition data
+    prev_data = {}
+    if prev_snapshot_id:
+        prev_response = supabase.table('trend_competitive_intelligence') \
+            .select('trend_id, competition_level, saturation_score') \
+            .eq('snapshot_id', prev_snapshot_id) \
+            .execute()
+        prev_data = {c['trend_id']: c for c in (prev_response.data or [])}
+
+    for trend_id, current in current_data.items():
+        previous = prev_data.get(trend_id)
+        conf = current.get('confidence', 0.5)
+
+        # 1. Entered crowded zone (transition to high)
+        if current['competition_level'] == 'high':
+            prev_level = previous['competition_level'] if previous else None
+            if prev_level != 'high':
+                should_fire, _ = should_fire_alert('entered_crowded_zone', conf, True, rules)
+                if should_fire:
+                    alerts.append({
+                        'trend_id': trend_id,
+                        'alert_type': 'entered_crowded_zone',
+                        'priority': 'high',
+                        'confidence': conf,
+                        'payload': {
+                            'saturation_score': current['saturation_score'],
+                            'previous_level': prev_level,
+                            'message': 'This trend has entered the crowded zone'
+                        }
+                    })
+
+            # 3. Wedge required (high competition, check for wedges)
+            wedge_response = supabase.table('trend_wedges') \
+                .select('wedge_type, trigger_reason') \
+                .eq('trend_id', trend_id) \
+                .eq('snapshot_id', snapshot_id) \
+                .execute()
+
+            wedges = wedge_response.data or []
+            if wedges:
+                should_fire, _ = should_fire_alert('wedge_required', conf, True, rules)
+                if should_fire:
+                    alerts.append({
+                        'trend_id': trend_id,
+                        'alert_type': 'wedge_required',
+                        'priority': 'normal',
+                        'confidence': conf,
+                        'payload': {
+                            'wedges': [{'type': w['wedge_type'], 'reason': w['trigger_reason']} for w in wedges],
+                            'message': 'High competition — differentiation wedge recommended'
+                        }
+                    })
+
+        # 2. Crowding increasing (saturation rising significantly)
+        if previous:
+            prev_sat = previous.get('saturation_score', 0) or 0
+            curr_sat = current.get('saturation_score', 0) or 0
+            increase = curr_sat - prev_sat
+
+            threshold = rules.get('crowding_increasing', {}).get('thresholds', {}).get('saturation_increase', 0.15)
+            if increase >= threshold:
+                should_fire, _ = should_fire_alert('crowding_increasing', conf, True, rules)
+                if should_fire:
+                    alerts.append({
+                        'trend_id': trend_id,
+                        'alert_type': 'crowding_increasing',
+                        'priority': 'normal',
+                        'confidence': conf,
+                        'payload': {
+                            'previous_saturation': prev_sat,
+                            'current_saturation': curr_sat,
+                            'increase': round(increase, 3),
+                            'message': f'Competition increased by {increase:.0%}'
+                        }
+                    })
+
+        # 4. Competition uncertain
+        if current['competition_level'] == 'uncertain':
+            prev_level = previous['competition_level'] if previous else None
+            if prev_level != 'uncertain':
+                alerts.append({
+                    'trend_id': trend_id,
+                    'alert_type': 'competition_uncertain',
+                    'priority': 'low',
+                    'confidence': conf,
+                    'payload': {
+                        'message': 'Insufficient data to assess competition level'
+                    }
+                })
+
+    return alerts
+
+
+# ============================================================
 # MAIN PROCESSING
 # ============================================================
 
@@ -473,6 +588,17 @@ def process_alerts_for_snapshot(snapshot_id: str) -> dict:
 
         except Exception as e:
             stats['errors'].append(f"became_eligible/{item['trend_id']}: {str(e)}")
+
+    # Process competition alerts (Phase 9)
+    competition_alerts = detect_competition_alerts(snapshot_id, prev_snapshot_id, rules)
+    for comp_alert in competition_alerts:
+        try:
+            result = create_alerts_for_users(comp_alert['trend_id'], snapshot_id, [comp_alert])
+            stats['alerts_created'] += result.get('created', 0)
+            atype = comp_alert['alert_type']
+            stats['by_type'][atype] = stats['by_type'].get(atype, 0) + 1
+        except Exception as e:
+            stats['errors'].append(f"competition/{comp_alert['trend_id']}: {str(e)}")
 
     # Process stage transitions
     transitions = detect_stage_transitions(snapshot_id)
