@@ -438,6 +438,23 @@ export async function GET(request: Request) {
     uncertain: 0
   }
 
+  // Fetch execution verdicts for user (Phase 10 — annotates, never re-ranks)
+  const { data: executionVerdicts } = await supabase
+    .from('execution_verdicts')
+    .select('opportunity_id, verdict, verdict_reasons, archetype, risk_flags')
+    .eq('user_id', userId)
+    .eq('snapshot_id', snapshot.id)
+
+  const verdictMap: Record<string, Record<string, unknown>> = {}
+  for (const v of (executionVerdicts || [])) {
+    verdictMap[v.opportunity_id] = {
+      verdict: v.verdict,
+      reasons: v.verdict_reasons,
+      archetype: v.archetype,
+      risk_flags: v.risk_flags
+    }
+  }
+
   // Score and rank opportunities
   const personalizedOpportunities = (opportunities || [])
     .filter(opp => !dismissedIds.has(opp.id))
@@ -518,6 +535,12 @@ export async function GET(request: Request) {
         if (trendWedges && trendWedges.length > 0) {
           result.wedges = trendWedges
         }
+      }
+
+      // Include execution verdict if present (Phase 10 — annotation only, no ranking impact)
+      const oppVerdict = verdictMap[opp.id]
+      if (oppVerdict) {
+        result.execution = oppVerdict
       }
 
       return result
