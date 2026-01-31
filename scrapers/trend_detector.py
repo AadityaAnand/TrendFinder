@@ -10,7 +10,7 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-DETECTOR_VERSION = 'keyword-scaffold-v1'
+DETECTOR_VERSION = 'phrase-topic-v1'
 SCORING_VERSION = 'norm-p90-decay7d-v1'
 LIFECYCLE_VERSION = 'lifecycle-v1'
 STOP_WORDS = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
@@ -25,22 +25,96 @@ STOP_WORDS = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for
     'one', 'two', 'first', 'last', 'new', 'old', 'good', 'bad'}
 
 
-THEME_CLUSTERS = {
-    'AI & Machine Learning': ['ai', 'llm', 'llms', 'model', 'models', 'machine', 'learning', 'gpt', 'claude', 'openai', 'anthropic', 'chatgpt', 'gemini', 'embedding', 'embeddings'],
-    'Development Tools': ['code', 'coding', 'development', 'developer', 'developers', 'programming', 'framework', 'frameworks', 'library', 'libraries', 'tool', 'tools'],
-    'Web & APIs': ['api', 'apis', 'web', 'http', 'rest', 'graphql', 'endpoint', 'endpoints'],
-    'Data & Analytics': ['data', 'analytics', 'database', 'databases', 'sql', 'analysis', 'visualization'],
-    'Cloud & Infrastructure': ['cloud', 'aws', 'azure', 'docker', 'kubernetes', 'infrastructure', 'deployment'],
-    'Mobile': ['mobile', 'ios', 'android', 'app', 'apps', 'application', 'applications']
+# Known technology terms and phrases for better extraction
+TECH_TERMS = {
+    # AI/ML specific
+    'llm', 'llms', 'gpt', 'chatgpt', 'openai', 'anthropic', 'claude', 'gemini', 'mistral',
+    'rag', 'embeddings', 'fine-tuning', 'transformer', 'diffusion', 'copilot',
+    # Languages & runtimes
+    'rust', 'python', 'golang', 'typescript', 'javascript', 'zig', 'elixir', 'ruby',
+    'swift', 'kotlin', 'haskell', 'ocaml', 'gleam', 'nim',
+    # Frameworks & tools
+    'react', 'nextjs', 'svelte', 'vue', 'angular', 'django', 'fastapi', 'express',
+    'docker', 'kubernetes', 'terraform', 'nix', 'guix',
+    'postgres', 'sqlite', 'redis', 'clickhouse', 'duckdb', 'supabase', 'firebase',
+    'wasm', 'webassembly', 'webtorrent', 'webrtc', 'websocket',
+    # Concepts
+    'blockchain', 'crypto', 'defi', 'web3', 'decentralized',
+    'serverless', 'edge', 'p2p', 'peer-to-peer', 'self-hosted', 'open-source',
+    'cli', 'tui', 'api', 'sdk', 'ide', 'devtools',
 }
 
-def map_keyword_to_theme(keyword):
-    for theme, keywords in THEME_CLUSTERS.items():
-        if keyword in keywords:
-            return theme
-    return None
+# Compound phrases to detect as single terms
+COMPOUND_PHRASES = [
+    'machine learning', 'deep learning', 'large language model', 'language model',
+    'neural network', 'computer vision', 'natural language',
+    'open source', 'self hosted', 'real time', 'local first',
+    'developer tools', 'dev tools', 'command line', 'version control',
+    'web scraping', 'web assembly', 'web torrent',
+    'cloud native', 'cloud computing', 'edge computing',
+    'vector database', 'time series', 'key value',
+    'type safe', 'type system', 'memory safe',
+    'code review', 'code generation', 'code editor',
+    'ai agent', 'ai agents', 'ai model', 'ai models', 'ai coding', 'ai powered',
+    'speech model', 'speech recognition', 'text to speech',
+    'data pipeline', 'data engineering', 'data visualization',
+]
+
+# Normalize plural/variant forms to canonical form
+CANONICAL_FORMS = {
+    'llms': 'llm', 'models': 'model', 'agents': 'agent', 'apps': 'app',
+    'apis': 'api', 'databases': 'database', 'frameworks': 'framework',
+    'libraries': 'library', 'tools': 'tool', 'applications': 'application',
+    'endpoints': 'endpoint', 'developers': 'developer', 'embeddings': 'embedding',
+    'containers': 'container', 'pipelines': 'pipeline', 'languages': 'language',
+    'language-models': 'llm', 'language-model': 'llm',
+    'large-language-model': 'llm', 'chatgpt': 'openai',
+}
+
+def normalize_phrase(phrase):
+    """Normalize a phrase to its canonical form."""
+    return CANONICAL_FORMS.get(phrase, phrase)
+
+
+def extract_topic_phrases(text):
+    """Extract meaningful topic phrases from a signal title.
+    Returns a set of normalized phrases (bigrams, tech terms, compound phrases)."""
+    cleaned = re.sub(r'[^\w\s\-+#.]', ' ', text.lower())
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+
+    phrases = set()
+
+    # 1. Check for compound phrases first
+    for phrase in COMPOUND_PHRASES:
+        if phrase in cleaned:
+            normalized = normalize_phrase(phrase.replace(' ', '-'))
+            phrases.add(normalized)
+
+    # 2. Extract known tech terms
+    words = cleaned.split()
+    for word in words:
+        w = word.strip('.-')
+        canonical = normalize_phrase(w)
+        if canonical in TECH_TERMS or w in TECH_TERMS:
+            phrases.add(canonical)
+
+    # 3. Extract meaningful bigrams (adjacent word pairs)
+    filtered_words = [w for w in words if len(w) > 2 and w not in STOP_WORDS]
+    for i in range(len(filtered_words) - 1):
+        w1 = normalize_phrase(filtered_words[i])
+        w2 = normalize_phrase(filtered_words[i+1])
+        bigram = f"{w1}-{w2}"
+        bigram = normalize_phrase(bigram)
+        # Keep bigrams where at least one word is a tech term or both are > 4 chars
+        if w1 in TECH_TERMS or w2 in TECH_TERMS or \
+           (len(w1) > 4 and len(w2) > 4):
+            phrases.add(bigram)
+
+    return phrases
+
 
 def extract_keywords(text):
+    """Legacy keyword extraction for backward compatibility."""
     cleaned = re.sub(r'[^a-z0-9\s]', '', text.lower())
     words = cleaned.split()
     keywords = [word for word in words if len(word) > 2 and word not in STOP_WORDS]
@@ -187,36 +261,132 @@ def calculate_time_decay(signal_created_at, half_life_days=7):
     return decay
 
 def group_signals_into_trends(signals, duplicate_ids, snapshot_id=None):
+    """Group signals into specific trends using phrase-based topic extraction.
+
+    Instead of mapping to broad categories (e.g., "AI & Machine Learning"),
+    this groups signals that share specific topic phrases (e.g., "speech-model",
+    "decentralized-hosting", "ai-coding").
+    """
     unique_signals = [s for s in signals if s['id'] not in duplicate_ids]
 
     normalized_scores, percentiles = normalize_score_by_source(unique_signals, snapshot_id)
 
-    signal_keywords = {}
+    # Step 1: Extract topic phrases from each signal
+    signal_phrases = {}  # signal_id -> set of phrases
+    phrase_signals = {}  # phrase -> set of signal_ids
+
     for signal in unique_signals:
         signal_id = signal['id']
         title = signal.get('title', '')
-        keywords = extract_keywords(title)
-        if keywords:
-            signal_keywords[signal_id] = keywords
+        phrases = extract_topic_phrases(title)
+        if phrases:
+            signal_phrases[signal_id] = phrases
+            for phrase in phrases:
+                if phrase not in phrase_signals:
+                    phrase_signals[phrase] = set()
+                phrase_signals[phrase].add(signal_id)
 
-    theme_signals = {}
-    for signal_id, keywords in signal_keywords.items():
-        for keyword in keywords:
-            theme = map_keyword_to_theme(keyword)
-            if theme:
-                if theme not in theme_signals:
-                    theme_signals[theme] = []
-                theme_signals[theme].append(signal_id)
+    # Step 2: Find phrases shared by 2+ signals (these are potential trends)
+    # Prefer compound/bigram phrases over single generic words
+    GENERIC_SINGLE_WORDS = {'edge', 'app', 'model', 'tool', 'code', 'web', 'data',
+                            'cloud', 'mobile', 'framework', 'library', 'api',
+                            'database', 'server', 'client', 'application'}
 
-    trend_data = []
-    for theme, signal_ids in theme_signals.items():
-        signal_ids = list(set(signal_ids))
+    shared_phrases = {}
+    for p, sids in phrase_signals.items():
+        if len(sids) < 2:
+            continue
+        # Skip single generic words — they produce broad categories
+        if p in GENERIC_SINGLE_WORDS and '-' not in p:
+            continue
+        shared_phrases[p] = sids
 
-        if len(signal_ids) < 2:
+    if not shared_phrases:
+        # Fallback: allow generic single words if nothing else
+        for p, sids in phrase_signals.items():
+            if len(sids) >= 2 and (p in TECH_TERMS or '-' in p):
+                shared_phrases[p] = sids
+
+    # Step 3: Merge overlapping phrase groups into trends
+    # Two phrase groups should merge if they share >50% of their signals
+    phrase_list = sorted(shared_phrases.keys(), key=lambda p: len(shared_phrases[p]), reverse=True)
+    merged_groups = []  # list of (primary_phrase, signal_id_set)
+    used_signals = set()
+
+    for phrase in phrase_list:
+        sids = shared_phrases[phrase]
+        # Skip if most signals already assigned
+        new_sids = sids - used_signals
+        if len(new_sids) < 2 and len(sids) < 3:
             continue
 
+        # Check if this should merge with an existing group
+        merged = False
+        for i, (_, group_sids) in enumerate(merged_groups):
+            overlap = len(sids & group_sids)
+            smaller = min(len(sids), len(group_sids))
+            if smaller > 0 and overlap / smaller > 0.5:
+                # Merge into existing group
+                merged_groups[i] = (merged_groups[i][0], group_sids | sids)
+                used_signals.update(sids)
+                merged = True
+                break
+
+        if not merged and len(sids) >= 2:
+            merged_groups.append((phrase, sids))
+            used_signals.update(sids)
+
+    # Step 4: Name each trend using the best representative phrase
+    trend_data = []
+    for primary_phrase, signal_ids in merged_groups:
+        signal_ids = list(signal_ids)
         trend_signals = [s for s in unique_signals if s['id'] in signal_ids]
 
+        if len(trend_signals) < 2:
+            continue
+
+        # Find the most descriptive phrase for this group
+        # Prefer compound phrases and bigrams over single words
+        group_phrase_counts = Counter()
+        for s in trend_signals:
+            sid = s['id']
+            if sid in signal_phrases:
+                for phrase in signal_phrases[sid]:
+                    if phrase in shared_phrases or phrase in TECH_TERMS:
+                        group_phrase_counts[phrase] += 1
+
+        # Score phrases: prefer longer (more specific), higher count
+        best_name = primary_phrase
+        best_score = 0
+        for phrase, count in group_phrase_counts.items():
+            # Compound phrases get a boost for specificity
+            specificity = len(phrase.split('-'))
+            score = count * (1 + specificity * 0.5)
+            if score > best_score:
+                best_score = score
+                best_name = phrase
+
+        # Format the trend name nicely
+        # Some terms should keep specific casing
+        CASING_OVERRIDES = {
+            'llm': 'LLMs', 'openai': 'OpenAI', 'chatgpt': 'ChatGPT',
+            'claude': 'Claude', 'gemini': 'Gemini', 'mistral': 'Mistral',
+            'gpt': 'GPT', 'api': 'APIs', 'cli': 'CLI Tools', 'sdk': 'SDKs',
+            'ide': 'IDE', 'tui': 'TUI', 'ai': 'AI',
+            'redis': 'Redis', 'postgres': 'PostgreSQL', 'sqlite': 'SQLite',
+            'docker': 'Docker', 'kubernetes': 'Kubernetes', 'terraform': 'Terraform',
+            'react': 'React', 'nextjs': 'Next.js', 'svelte': 'Svelte', 'vue': 'Vue',
+            'rust': 'Rust', 'python': 'Python', 'golang': 'Go', 'zig': 'Zig',
+            'typescript': 'TypeScript', 'javascript': 'JavaScript', 'elixir': 'Elixir',
+            'nix': 'Nix', 'guix': 'Guix', 'wasm': 'WebAssembly',
+            'supabase': 'Supabase', 'firebase': 'Firebase',
+            'duckdb': 'DuckDB', 'clickhouse': 'ClickHouse',
+        }
+        parts = best_name.split('-')
+        formatted_parts = [CASING_OVERRIDES.get(p, p.capitalize()) for p in parts]
+        trend_name = ' '.join(formatted_parts)
+
+        # Calculate momentum
         weighted_scores = []
         for s in trend_signals:
             norm_score = normalized_scores.get(s['id'], 0.0)
@@ -234,7 +404,7 @@ def group_signals_into_trends(signals, duplicate_ids, snapshot_id=None):
         first_seen = earliest_signal['created_at']
 
         trend_data.append({
-            'keyword': theme,
+            'keyword': trend_name,
             'signal_count': signal_count,
             'momentum_score': momentum_score,
             'topk_mean': topk_mean,
@@ -244,7 +414,7 @@ def group_signals_into_trends(signals, duplicate_ids, snapshot_id=None):
         })
 
     trend_data.sort(key=lambda x: x['momentum_score'], reverse=True)
-    return trend_data[:20]
+    return trend_data[:30]
 
 def create_snapshot(signal_count, unique_signal_count, duplicate_count):
     try:
