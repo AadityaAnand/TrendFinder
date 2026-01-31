@@ -461,10 +461,10 @@ export default async function TrendDetailPage({
       <div className="border-b border-gray-200 bg-gray-50">
         <div className="max-w-4xl mx-auto px-6 py-12">
           <Link
-            href="/trends/detected"
+            href="/explore"
             className="text-gray-600 hover:text-gray-900 mb-4 inline-block"
           >
-            ← Back to Trends
+            ← Back to Explore
           </Link>
           <h1 className="text-4xl font-bold text-gray-900 mb-3">
             {trend.theme}

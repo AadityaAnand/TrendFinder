@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { useAuth } from '@/lib/auth'
 
 interface UserPreferences {
   id: string
@@ -67,9 +68,6 @@ const RISK_OPTIONS = [
   { value: 'high', label: 'High', description: 'Early mover on emerging trends' }
 ]
 
-const USER_ID_KEY = 'trend_generator_user_id'
-const HAS_PREFS_KEY = 'trend_generator_has_prefs'
-
 const STEPS = [
   { key: 'role', title: 'Who are you?', subtitle: 'Select your primary roles' },
   { key: 'interests', title: 'What interests you?', subtitle: 'Pick domains and tech you care about' },
@@ -126,6 +124,7 @@ function ChipSelect({
 
 export default function SettingsPage() {
   const router = useRouter()
+  const { profileId, hasPrefs, ready, isLoggedIn, markPrefsComplete } = useAuth()
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -143,39 +142,33 @@ export default function SettingsPage() {
   const [avoidTopics, setAvoidTopics] = useState('')
 
   useEffect(() => {
-    const userId = localStorage.getItem(USER_ID_KEY)
-    if (!userId) {
+    if (!ready) return
+    if (!isLoggedIn) {
       router.replace('/')
       return
     }
-    const hasPrefs = localStorage.getItem(HAS_PREFS_KEY) === 'true'
     setIsOnboarding(!hasPrefs)
-    loadProfile(userId)
-  }, [router])
+    if (profileId) {
+      loadProfile(profileId)
+    } else {
+      setLoading(false)
+      setError('Profile not found. Please sign up again.')
+    }
+  }, [ready, isLoggedIn, hasPrefs, profileId, router])
 
-  const loadProfile = async (userId: string) => {
+  const loadProfile = async (pid: string) => {
     try {
       setLoading(true)
       setError(null)
 
-      // We have the user_id directly, fetch profile by querying preferences
-      // First try to get the profile via the stored user ID
-      const res = await fetch(`/api/profile?user_id=${userId}`)
+      const res = await fetch(`/api/profile?user_id=${pid}`)
 
       if (res.ok) {
         const data = await res.json()
         setProfile(data)
         initFormFromPreferences(data.preferences)
       } else {
-        // Fallback: try demo-user-001
-        const fallbackRes = await fetch(`/api/profile?external_id=demo-user-001`)
-        if (fallbackRes.ok) {
-          const data = await fallbackRes.json()
-          setProfile(data)
-          initFormFromPreferences(data.preferences)
-        } else {
-          setError('Could not load profile. Please try signing up again.')
-        }
+        setError('Could not load profile. Please try signing up again.')
       }
     } catch {
       setError('Failed to load profile')
@@ -220,10 +213,10 @@ export default function SettingsPage() {
 
       if (!res.ok) throw new Error('Failed to save preferences')
 
-      localStorage.setItem(HAS_PREFS_KEY, 'true')
+      markPrefsComplete()
 
       if (isOnboarding) {
-        router.push('/for-you')
+        router.push('/explore')
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error')
