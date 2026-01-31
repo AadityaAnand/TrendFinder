@@ -1,26 +1,33 @@
 import { supabase } from '@/lib/supabase'
 import { NextResponse } from 'next/server'
 
-// GET /api/profile?external_id=xxx - Get user profile
+// GET /api/profile?external_id=xxx or ?user_id=xxx - Get user profile
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const externalId = searchParams.get('external_id')
+  const userId = searchParams.get('user_id')
 
-  if (!externalId) {
+  if (!externalId && !userId) {
     return NextResponse.json(
-      { error: 'external_id is required' },
+      { error: 'external_id or user_id is required' },
       { status: 400 }
     )
   }
 
-  const { data: profile, error } = await supabase
+  let query = supabase
     .from('user_profiles')
     .select(`
       *,
       user_preferences (*)
     `)
-    .eq('external_id', externalId)
-    .single()
+
+  if (userId) {
+    query = query.eq('id', userId)
+  } else {
+    query = query.eq('external_id', externalId!)
+  }
+
+  const { data: profile, error } = await query.single()
 
   if (error || !profile) {
     return NextResponse.json(

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 
 interface UserPreferences {
   id: string
@@ -67,93 +67,71 @@ const RISK_OPTIONS = [
   { value: 'high', label: 'High', description: 'Early mover on emerging trends' }
 ]
 
-// Demo user ID for now - in production this would come from auth
-const DEMO_EXTERNAL_ID = 'demo-user-001'
+const USER_ID_KEY = 'trend_generator_user_id'
+const HAS_PREFS_KEY = 'trend_generator_has_prefs'
 
-function MultiSelect({
+const STEPS = [
+  { key: 'role', title: 'Who are you?', subtitle: 'Select your primary roles' },
+  { key: 'interests', title: 'What interests you?', subtitle: 'Pick domains and tech you care about' },
+  { key: 'constraints', title: 'Your constraints', subtitle: 'Timeline, team, and risk appetite' },
+]
+
+function ChipSelect({
   options,
   selected,
   onChange,
-  label
+  multi = true,
 }: {
   options: { value: string; label: string; description?: string }[]
-  selected: string[]
-  onChange: (values: string[]) => void
-  label: string
+  selected: string | string[]
+  onChange: (v: string | string[]) => void
+  multi?: boolean
 }) {
+  const selectedArr = Array.isArray(selected) ? selected : [selected]
+
   const toggle = (value: string) => {
-    if (selected.includes(value)) {
-      onChange(selected.filter(v => v !== value))
+    if (multi) {
+      const arr = selectedArr.includes(value)
+        ? selectedArr.filter(v => v !== value)
+        : [...selectedArr, value]
+      onChange(arr)
     } else {
-      onChange([...selected, value])
+      onChange(value)
     }
   }
 
   return (
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-2">{label}</label>
-      <div className="flex flex-wrap gap-2">
-        {options.map(option => (
+    <div className="flex flex-wrap gap-2">
+      {options.map(option => {
+        const isSelected = selectedArr.includes(option.value)
+        return (
           <button
             key={option.value}
             type="button"
             onClick={() => toggle(option.value)}
-            className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
-              selected.includes(option.value)
-                ? 'bg-gray-900 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            className={`px-3.5 py-2 rounded-lg text-sm font-medium transition border ${
+              isSelected
+                ? 'bg-slate-900 text-white border-slate-900'
+                : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-50'
             }`}
             title={option.description}
           >
             {option.label}
           </button>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function SingleSelect({
-  options,
-  selected,
-  onChange,
-  label
-}: {
-  options: { value: string; label: string; description?: string }[]
-  selected: string
-  onChange: (value: string) => void
-  label: string
-}) {
-  return (
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-2">{label}</label>
-      <div className="flex flex-wrap gap-2">
-        {options.map(option => (
-          <button
-            key={option.value}
-            type="button"
-            onClick={() => onChange(option.value)}
-            className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
-              selected === option.value
-                ? 'bg-gray-900 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-            title={option.description}
-          >
-            {option.label}
-          </button>
-        ))}
-      </div>
+        )
+      })}
     </div>
   )
 }
 
 export default function SettingsPage() {
+  const router = useRouter()
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState(false)
+  const [step, setStep] = useState(0)
+  const [isOnboarding, setIsOnboarding] = useState(false)
 
   // Form state
   const [targetRoles, setTargetRoles] = useState<string[]>([])
@@ -165,43 +143,42 @@ export default function SettingsPage() {
   const [avoidTopics, setAvoidTopics] = useState('')
 
   useEffect(() => {
-    loadProfile()
-  }, [])
+    const userId = localStorage.getItem(USER_ID_KEY)
+    if (!userId) {
+      router.replace('/')
+      return
+    }
+    const hasPrefs = localStorage.getItem(HAS_PREFS_KEY) === 'true'
+    setIsOnboarding(!hasPrefs)
+    loadProfile(userId)
+  }, [router])
 
-  const loadProfile = async () => {
+  const loadProfile = async (userId: string) => {
     try {
       setLoading(true)
       setError(null)
 
-      // Try to get existing profile
-      const res = await fetch(`/api/profile?external_id=${DEMO_EXTERNAL_ID}`)
+      // We have the user_id directly, fetch profile by querying preferences
+      // First try to get the profile via the stored user ID
+      const res = await fetch(`/api/profile?user_id=${userId}`)
 
-      if (res.status === 404) {
-        // Create new profile
-        const createRes = await fetch('/api/profile', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ external_id: DEMO_EXTERNAL_ID, display_name: 'Demo User' })
-        })
-
-        if (!createRes.ok) {
-          throw new Error('Failed to create profile')
-        }
-
-        // Fetch the newly created profile
-        const newProfileRes = await fetch(`/api/profile?external_id=${DEMO_EXTERNAL_ID}`)
-        const newProfile = await newProfileRes.json()
-        setProfile(newProfile)
-        initFormFromPreferences(newProfile.preferences)
-      } else if (res.ok) {
+      if (res.ok) {
         const data = await res.json()
         setProfile(data)
         initFormFromPreferences(data.preferences)
       } else {
-        throw new Error('Failed to load profile')
+        // Fallback: try demo-user-001
+        const fallbackRes = await fetch(`/api/profile?external_id=demo-user-001`)
+        if (fallbackRes.ok) {
+          const data = await fallbackRes.json()
+          setProfile(data)
+          initFormFromPreferences(data.preferences)
+        } else {
+          setError('Could not load profile. Please try signing up again.')
+        }
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error')
+    } catch {
+      setError('Failed to load profile')
     } finally {
       setLoading(false)
     }
@@ -225,7 +202,6 @@ export default function SettingsPage() {
     try {
       setSaving(true)
       setError(null)
-      setSuccess(false)
 
       const res = await fetch('/api/profile/preferences', {
         method: 'PUT',
@@ -242,12 +218,13 @@ export default function SettingsPage() {
         })
       })
 
-      if (!res.ok) {
-        throw new Error('Failed to save preferences')
-      }
+      if (!res.ok) throw new Error('Failed to save preferences')
 
-      setSuccess(true)
-      setTimeout(() => setSuccess(false), 3000)
+      localStorage.setItem(HAS_PREFS_KEY, 'true')
+
+      if (isOnboarding) {
+        router.push('/for-you')
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error')
     } finally {
@@ -255,137 +232,180 @@ export default function SettingsPage() {
     }
   }
 
+  const handleNext = () => {
+    if (step < STEPS.length - 1) {
+      setStep(step + 1)
+    } else {
+      handleSave()
+    }
+  }
+
+  const handleBack = () => {
+    if (step > 0) setStep(step - 1)
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
-        <div className="text-gray-500">Loading preferences...</div>
+        <div className="w-5 h-5 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" />
       </div>
     )
   }
 
+  const stepContent = [
+    // Step 0: Role
+    <div key="role" className="space-y-6">
+      <div>
+        <label className="block text-sm font-medium text-slate-700 mb-3">Your primary roles</label>
+        <ChipSelect options={ROLE_OPTIONS} selected={targetRoles} onChange={(v) => setTargetRoles(v as string[])} />
+      </div>
+    </div>,
+
+    // Step 1: Interests
+    <div key="interests" className="space-y-6">
+      <div>
+        <label className="block text-sm font-medium text-slate-700 mb-3">Domains you care about</label>
+        <ChipSelect options={DOMAIN_OPTIONS} selected={domains} onChange={(v) => setDomains(v as string[])} />
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-slate-700 mb-3">Tech stack you work with</label>
+        <ChipSelect options={STACK_OPTIONS} selected={techStack} onChange={(v) => setTechStack(v as string[])} />
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-slate-700 mb-2">Topics to avoid</label>
+        <input
+          type="text"
+          value={avoidTopics}
+          onChange={(e) => setAvoidTopics(e.target.value)}
+          placeholder="e.g., crypto, blockchain"
+          className="w-full px-3.5 py-2.5 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition"
+        />
+        <p className="text-xs text-slate-400 mt-1.5">Comma-separated. These topics will be ranked lower, not hidden.</p>
+      </div>
+    </div>,
+
+    // Step 2: Constraints
+    <div key="constraints" className="space-y-6">
+      <div>
+        <label className="block text-sm font-medium text-slate-700 mb-3">Time horizon</label>
+        <ChipSelect options={TIME_HORIZON_OPTIONS} selected={timeHorizon} onChange={(v) => setTimeHorizon(v as string)} multi={false} />
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-slate-700 mb-3">Team size</label>
+        <ChipSelect options={TEAM_SIZE_OPTIONS} selected={teamSize} onChange={(v) => setTeamSize(v as string)} multi={false} />
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-slate-700 mb-3">Risk tolerance</label>
+        <ChipSelect options={RISK_OPTIONS} selected={riskTolerance} onChange={(v) => setRiskTolerance(v as string)} multi={false} />
+      </div>
+    </div>,
+  ]
+
   return (
     <div className="min-h-screen bg-white">
-      <div className="border-b border-gray-200">
-        <div className="max-w-3xl mx-auto px-6 py-8">
-          <div className="flex items-center gap-4 mb-2">
-            <Link href="/" className="text-gray-500 hover:text-gray-700">
-              ← Back
-            </Link>
-          </div>
-          <h1 className="text-3xl font-bold text-gray-900">
-            Personalization Settings
-          </h1>
-          <p className="text-gray-600 mt-2">
-            Tell us about your focus to see the most relevant opportunities first.
-            This only changes ranking — all qualified opportunities remain visible.
-          </p>
+      <div className="max-w-xl mx-auto px-6 py-12">
+        {/* Header */}
+        <div className="mb-8">
+          {isOnboarding ? (
+            <>
+              <h1 className="text-2xl font-bold text-slate-900">Set up your preferences</h1>
+              <p className="text-sm text-slate-500 mt-1">This only changes ranking — all qualified opportunities remain visible.</p>
+            </>
+          ) : (
+            <>
+              <h1 className="text-2xl font-bold text-slate-900">Settings</h1>
+              <p className="text-sm text-slate-500 mt-1">Update your preferences to adjust opportunity ranking.</p>
+            </>
+          )}
         </div>
-      </div>
 
-      <div className="max-w-3xl mx-auto px-6 py-8">
+        {/* Progress bar */}
+        <div className="flex items-center gap-2 mb-8">
+          {STEPS.map((s, i) => (
+            <div key={s.key} className="flex items-center gap-2 grow">
+              <button
+                onClick={() => setStep(i)}
+                className={`flex items-center gap-2 text-xs font-medium transition ${
+                  i === step ? 'text-slate-900' : i < step ? 'text-emerald-600' : 'text-slate-400'
+                }`}
+              >
+                <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-semibold border transition ${
+                  i === step
+                    ? 'border-slate-900 bg-slate-900 text-white'
+                    : i < step
+                    ? 'border-emerald-500 bg-emerald-500 text-white'
+                    : 'border-slate-200 text-slate-400'
+                }`}>
+                  {i < step ? (
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                    </svg>
+                  ) : (
+                    i + 1
+                  )}
+                </span>
+                <span className="hidden sm:inline">{s.title}</span>
+              </button>
+              {i < STEPS.length - 1 && (
+                <div className={`grow h-px ${i < step ? 'bg-emerald-300' : 'bg-slate-200'}`} />
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Step title */}
+        <div className="mb-6">
+          <h2 className="text-lg font-semibold text-slate-900">{STEPS[step].title}</h2>
+          <p className="text-sm text-slate-500 mt-0.5">{STEPS[step].subtitle}</p>
+        </div>
+
         {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-800">
+          <div className="mb-6 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
             {error}
           </div>
         )}
 
-        {success && (
-          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg text-green-800">
-            Preferences saved successfully!
-          </div>
-        )}
+        {/* Step content */}
+        {stepContent[step]}
 
-        <div className="space-y-8">
-          <section>
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Who are you?</h2>
-            <MultiSelect
-              label="Your primary roles"
-              options={ROLE_OPTIONS}
-              selected={targetRoles}
-              onChange={setTargetRoles}
-            />
-          </section>
-
-          <section>
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">What interests you?</h2>
-            <div className="space-y-4">
-              <MultiSelect
-                label="Domains you care about"
-                options={DOMAIN_OPTIONS}
-                selected={domains}
-                onChange={setDomains}
-              />
-              <MultiSelect
-                label="Tech stack you work with"
-                options={STACK_OPTIONS}
-                selected={techStack}
-                onChange={setTechStack}
-              />
-            </div>
-          </section>
-
-          <section>
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Your constraints</h2>
-            <div className="space-y-4">
-              <SingleSelect
-                label="Time horizon"
-                options={TIME_HORIZON_OPTIONS}
-                selected={timeHorizon}
-                onChange={setTimeHorizon}
-              />
-              <SingleSelect
-                label="Team size"
-                options={TEAM_SIZE_OPTIONS}
-                selected={teamSize}
-                onChange={setTeamSize}
-              />
-              <SingleSelect
-                label="Risk tolerance"
-                options={RISK_OPTIONS}
-                selected={riskTolerance}
-                onChange={setRiskTolerance}
-              />
-            </div>
-          </section>
-
-          <section>
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Topics to avoid</h2>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Enter topics you want to deprioritize (comma-separated)
-              </label>
-              <input
-                type="text"
-                value={avoidTopics}
-                onChange={(e) => setAvoidTopics(e.target.value)}
-                placeholder="e.g., crypto, blockchain, NFT"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent"
-              />
-              <p className="text-sm text-gray-500 mt-1">
-                Opportunities containing these topics will be ranked lower
-              </p>
-            </div>
-          </section>
-
-          <div className="pt-6 border-t border-gray-200">
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className={`px-6 py-3 rounded-lg font-medium transition ${
-                saving
-                  ? 'bg-gray-400 text-white cursor-not-allowed'
-                  : 'bg-gray-900 text-white hover:bg-gray-800'
-              }`}
-            >
-              {saving ? 'Saving...' : 'Save Preferences'}
-            </button>
-            {profile?.preferences?.preference_version && (
-              <span className="ml-4 text-sm text-gray-500">
-                Version {profile.preferences.preference_version}
-              </span>
+        {/* Navigation */}
+        <div className="flex items-center justify-between mt-10 pt-6 border-t border-slate-100">
+          <div>
+            {step > 0 && (
+              <button
+                onClick={handleBack}
+                className="text-sm text-slate-500 hover:text-slate-700 font-medium transition"
+              >
+                Back
+              </button>
             )}
           </div>
+          <button
+            onClick={handleNext}
+            disabled={saving}
+            className={`px-6 py-2.5 rounded-lg text-sm font-semibold transition ${
+              saving
+                ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
+                : 'bg-slate-900 text-white hover:bg-slate-800'
+            }`}
+          >
+            {step < STEPS.length - 1
+              ? 'Continue'
+              : saving
+              ? 'Saving...'
+              : isOnboarding
+              ? 'Save & see opportunities'
+              : 'Save preferences'
+            }
+          </button>
         </div>
+
+        {/* Version info for returning users */}
+        {!isOnboarding && profile?.preferences?.preference_version && (
+          <p className="text-xs text-slate-400 text-center mt-6">
+            Preference version {profile.preferences.preference_version}
+          </p>
+        )}
       </div>
     </div>
   )

@@ -15,6 +15,17 @@ interface TrajectoryPoint {
   opportunity_score: number | null
 }
 
+interface TimingData {
+  timing_label: string
+  confidence: number
+}
+
+interface CompetitionData {
+  competition_level: string
+  saturation_score: number
+  confidence: number
+}
+
 interface TrendData {
   id: string
   theme: string
@@ -26,6 +37,8 @@ interface TrendData {
   current_stage: string | null
   qualified_count: number
   total_snapshots: number
+  timing: TimingData | null
+  competition: CompetitionData | null
 }
 
 async function getTrendData(id: string): Promise<TrendData | null> {
@@ -61,6 +74,38 @@ async function getTrendData(id: string): Promise<TrendData | null> {
     total_snapshots = trajectoryRow.total_snapshots || 0
   }
 
+  // Fetch timing signal (latest)
+  let timing: TimingData | null = null
+  const { data: timingRow } = await supabase
+    .from('trend_timing_signals')
+    .select('timing_label, confidence')
+    .eq('trend_id', id)
+    .order('computed_at', { ascending: false })
+    .limit(1)
+    .single()
+
+  if (timingRow) {
+    timing = { timing_label: timingRow.timing_label, confidence: timingRow.confidence }
+  }
+
+  // Fetch competition data (latest)
+  let competition: CompetitionData | null = null
+  const { data: compRow } = await supabase
+    .from('trend_competitive_intelligence')
+    .select('competition_level, saturation_score, confidence')
+    .eq('trend_id', id)
+    .order('computed_at', { ascending: false })
+    .limit(1)
+    .single()
+
+  if (compRow) {
+    competition = {
+      competition_level: compRow.competition_level,
+      saturation_score: compRow.saturation_score,
+      confidence: compRow.confidence
+    }
+  }
+
   return {
     ...trend,
     trajectory,
@@ -68,9 +113,85 @@ async function getTrendData(id: string): Promise<TrendData | null> {
     peak_momentum_at,
     current_stage,
     qualified_count,
-    total_snapshots
+    total_snapshots,
+    timing,
+    competition
   }
 }
+
+// --- UI Helper Components ---
+
+const TIMING_CONFIG: Record<string, { text: string; color: string; description: string }> = {
+  too_early: { text: 'Too Early', color: 'bg-blue-100 text-blue-700', description: 'Not enough data to act yet' },
+  early_edge: { text: 'Early Edge', color: 'bg-emerald-100 text-emerald-700', description: 'Good window to enter before the crowd' },
+  crowded: { text: 'Crowded', color: 'bg-amber-100 text-amber-700', description: 'Many players already building here' },
+  late_but_monetizable: { text: 'Late but Monetizable', color: 'bg-yellow-100 text-yellow-700', description: 'Saturating, but revenue paths remain' },
+  timing_uncertain: { text: 'Uncertain', color: 'bg-gray-100 text-gray-600', description: 'Insufficient data for timing classification' }
+}
+
+const COMPETITION_CONFIG: Record<string, { text: string; color: string }> = {
+  low: { text: 'Low', color: 'bg-emerald-100 text-emerald-700' },
+  moderate: { text: 'Moderate', color: 'bg-yellow-100 text-yellow-700' },
+  high: { text: 'High', color: 'bg-red-100 text-red-700' },
+  uncertain: { text: 'Unknown', color: 'bg-gray-100 text-gray-600' }
+}
+
+const STAGE_CONFIG: Record<string, { label: string; color: string }> = {
+  emerging: { label: 'Emerging', color: 'bg-blue-500' },
+  rising: { label: 'Rising', color: 'bg-green-500' },
+  peaking: { label: 'Peaking', color: 'bg-yellow-500' },
+  stable: { label: 'Stable', color: 'bg-gray-400' },
+  declining: { label: 'Declining', color: 'bg-red-500' }
+}
+
+const STAGES_ORDER = ['emerging', 'rising', 'peaking', 'stable', 'declining']
+
+function LifecycleTimeline({ currentStage }: { currentStage: string }) {
+  const currentIdx = STAGES_ORDER.indexOf(currentStage)
+  return (
+    <div className="flex items-center gap-1.5">
+      {STAGES_ORDER.map((stage, i) => {
+        const config = STAGE_CONFIG[stage]
+        const isCurrent = stage === currentStage
+        const isPast = currentIdx >= 0 && i < currentIdx
+        return (
+          <div key={stage} className="flex items-center gap-1.5">
+            <div className="flex flex-col items-center">
+              <div
+                className={`h-2.5 rounded-full transition-all ${
+                  isCurrent ? `${config.color} w-12` :
+                  isPast ? `${config.color} opacity-40 w-6` :
+                  'bg-gray-200 w-6'
+                }`}
+              />
+              <span className={`text-xs mt-1 ${isCurrent ? 'text-gray-700 font-medium' : 'text-gray-400'}`}>
+                {config.label}
+              </span>
+            </div>
+            {i < STAGES_ORDER.length - 1 && (
+              <div className={`w-3 h-px ${isPast || isCurrent ? 'bg-gray-400' : 'bg-gray-200'}`} />
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function DeltaBadge({ value, label, suffix }: { value: number; label: string; suffix?: string }) {
+  const isPositive = value > 0
+  const isZero = value === 0
+  return (
+    <div className="flex items-center gap-1.5 text-sm">
+      <span className="text-gray-500">{label}:</span>
+      <span className={isZero ? 'text-gray-400' : isPositive ? 'text-emerald-600' : 'text-red-600'}>
+        {isPositive ? '+' : ''}{value.toFixed(3)}{suffix || ''}
+      </span>
+    </div>
+  )
+}
+
+// --- Chart Components ---
 
 function getDateRange(start: string, end: string): string[] {
   const dates: string[] = []
@@ -262,6 +383,63 @@ function StageTimeline({ trajectory }: { trajectory: TrajectoryPoint[] }) {
   )
 }
 
+// --- What Changed Since Yesterday (NICE-TO-HAVE 9) ---
+
+function WhatChanged({ trajectory }: { trajectory: TrajectoryPoint[] }) {
+  if (trajectory.length < 2) return null
+
+  const latest = trajectory[trajectory.length - 1]
+  const previous = trajectory[trajectory.length - 2]
+
+  const momentumDelta = (latest.momentum || 0) - (previous.momentum || 0)
+  const signalDelta = (latest.signal_count || 0) - (previous.signal_count || 0)
+  const stageChanged = latest.stage !== previous.stage
+  const qualificationChanged = latest.qualified !== previous.qualified
+  const confidenceDelta = (latest.stage_confidence || 0) - (previous.stage_confidence || 0)
+
+  const hasChanges = momentumDelta !== 0 || signalDelta !== 0 || stageChanged || qualificationChanged
+
+  if (!hasChanges) return null
+
+  return (
+    <div className="border border-gray-200 rounded-lg p-4 mb-8">
+      <h3 className="text-sm font-semibold text-gray-700 mb-3">What changed since last snapshot</h3>
+      <div className="flex flex-wrap gap-x-6 gap-y-2">
+        <DeltaBadge value={momentumDelta} label="Momentum" />
+        {signalDelta !== 0 && (
+          <div className="flex items-center gap-1.5 text-sm">
+            <span className="text-gray-500">Signals:</span>
+            <span className={signalDelta > 0 ? 'text-emerald-600' : 'text-red-600'}>
+              {signalDelta > 0 ? '+' : ''}{signalDelta}
+            </span>
+          </div>
+        )}
+        {confidenceDelta !== 0 && (
+          <DeltaBadge value={confidenceDelta} label="Confidence" />
+        )}
+        {stageChanged && (
+          <div className="flex items-center gap-1.5 text-sm">
+            <span className="text-gray-500">Stage:</span>
+            <span className="text-gray-400">{previous.stage}</span>
+            <span className="text-gray-400">→</span>
+            <span className="text-gray-900 font-medium">{latest.stage}</span>
+          </div>
+        )}
+        {qualificationChanged && (
+          <div className="flex items-center gap-1.5 text-sm">
+            <span className="text-gray-500">Qualified:</span>
+            <span className={latest.qualified ? 'text-emerald-600 font-medium' : 'text-red-600'}>
+              {latest.qualified ? 'Yes (new)' : 'No longer'}
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// --- Main Page ---
+
 export default async function TrendDetailPage({
   params
 }: {
@@ -275,6 +453,8 @@ export default async function TrendDetailPage({
   }
 
   const latestPoint = trend.trajectory[trend.trajectory.length - 1]
+  const timingConfig = trend.timing ? TIMING_CONFIG[trend.timing.timing_label] : null
+  const compConfig = trend.competition ? COMPETITION_CONFIG[trend.competition.competition_level] : null
 
   return (
     <div className="min-h-screen bg-white">
@@ -286,25 +466,60 @@ export default async function TrendDetailPage({
           >
             ← Back to Trends
           </Link>
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">
+          <h1 className="text-4xl font-bold text-gray-900 mb-3">
             {trend.theme}
           </h1>
-          <div className="flex items-center gap-4 text-sm text-gray-600">
-            <span className={`px-2 py-1 rounded ${
-              trend.current_stage === 'rising' ? 'bg-green-100 text-green-700' :
-              trend.current_stage === 'emerging' ? 'bg-blue-100 text-blue-700' :
-              trend.current_stage === 'peaking' ? 'bg-yellow-100 text-yellow-700' :
-              'bg-gray-100 text-gray-700'
-            }`}>
-              {trend.current_stage || 'Unknown'}
-            </span>
-            <span>{trend.total_snapshots} snapshots tracked</span>
-            <span>First seen: {new Date(trend.first_seen).toLocaleDateString()}</span>
+
+          {/* Lifecycle timeline (SHOULD-DO 5) */}
+          {trend.current_stage && (
+            <div className="mb-4">
+              <LifecycleTimeline currentStage={trend.current_stage} />
+            </div>
+          )}
+
+          {/* Intelligence badges */}
+          <div className="flex items-center gap-3 flex-wrap text-sm">
+            <span className="text-gray-500">{trend.total_snapshots} snapshots tracked</span>
+            <span className="text-gray-300">|</span>
+            <span className="text-gray-500">First seen: {new Date(trend.first_seen).toLocaleDateString()}</span>
+
+            {timingConfig && (
+              <>
+                <span className="text-gray-300">|</span>
+                <span className="relative group">
+                  <span className={`px-2 py-1 rounded text-xs font-medium ${timingConfig.color} cursor-help`}>
+                    Timing: {timingConfig.text}
+                  </span>
+                  <span className="absolute bottom-full left-0 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition pointer-events-none w-48 z-10">
+                    {timingConfig.description} ({Math.round((trend.timing?.confidence || 0) * 100)}% confidence)
+                  </span>
+                </span>
+              </>
+            )}
+
+            {compConfig && (
+              <>
+                <span className="text-gray-300">|</span>
+                <span className="relative group">
+                  <span className={`px-2 py-1 rounded text-xs font-medium ${compConfig.color} cursor-help`}>
+                    Competition: {compConfig.text}
+                  </span>
+                  {trend.competition && (
+                    <span className="absolute bottom-full left-0 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition pointer-events-none w-48 z-10">
+                      Saturation: {Math.round(trend.competition.saturation_score * 100)}%
+                    </span>
+                  )}
+                </span>
+              </>
+            )}
           </div>
         </div>
       </div>
 
       <div className="max-w-4xl mx-auto px-6 py-12">
+        {/* What changed since yesterday (NICE-TO-HAVE 9) */}
+        <WhatChanged trajectory={trend.trajectory} />
+
         <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-12">
           <div className="border border-gray-200 rounded-lg p-4">
             <div className="text-sm text-gray-500 mb-1">Current Momentum</div>
@@ -424,6 +639,19 @@ export default async function TrendDetailPage({
               </tbody>
             </table>
           </div>
+        </div>
+
+        {/* Model versioning (NICE-TO-HAVE 11) */}
+        <div className="mt-12 pt-6 border-t border-gray-100 text-xs text-gray-400">
+          <details>
+            <summary className="cursor-pointer hover:text-gray-600">System info</summary>
+            <div className="mt-2 space-y-1">
+              <p>Scoring: norm-p90-decay7d-v1</p>
+              <p>Lifecycle: lifecycle-v1</p>
+              {trend.timing && <p>Timing: timing-v1</p>}
+              {trend.competition && <p>Competition: competition-v1</p>}
+            </div>
+          </details>
         </div>
       </div>
     </div>
