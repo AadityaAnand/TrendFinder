@@ -43,12 +43,18 @@ export default function LandingPage() {
           No vibes. No hype. Every recommendation is auditable, every score is deterministic,
           and every uncertainty is shown — not hidden.
         </p>
-        <div className="mt-8">
+        <div className="mt-8 flex items-center gap-4">
           <Link
             href="/sign-up"
             className="px-6 py-3 bg-slate-900 text-white text-sm font-semibold rounded-lg hover:bg-slate-800 transition"
           >
             Get started free
+          </Link>
+          <Link
+            href="/explore"
+            className="px-6 py-3 border border-slate-200 text-slate-700 text-sm font-semibold rounded-lg hover:bg-slate-50 transition"
+          >
+            Explore trends
           </Link>
         </div>
       </div>

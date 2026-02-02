@@ -266,6 +266,7 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const userId = searchParams.get('user_id')
   const limit = parseInt(searchParams.get('limit') || '20', 10)
+  const includeUnqualified = searchParams.get('include_unqualified') === 'true'
 
   if (!userId) {
     return NextResponse.json(
@@ -303,8 +304,8 @@ export async function GET(request: Request) {
     )
   }
 
-  // Get qualified opportunities with their trends
-  const { data: opportunities, error: oppError } = await supabase
+  // Get opportunities with their trends
+  let oppQuery = supabase
     .from('trend_opportunities')
     .select(`
       *,
@@ -315,8 +316,13 @@ export async function GET(request: Request) {
       )
     `)
     .eq('snapshot_id', snapshot.id)
-    .eq('qualified', true)
     .order('opportunity_score', { ascending: false })
+
+  if (!includeUnqualified) {
+    oppQuery = oppQuery.eq('qualified', true)
+  }
+
+  const { data: opportunities, error: oppError } = await oppQuery
 
   if (oppError) {
     return NextResponse.json(

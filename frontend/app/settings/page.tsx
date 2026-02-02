@@ -15,6 +15,7 @@ interface UserPreferences {
   risk_tolerance: string
   avoid_topics: string[]
   preference_version: number
+  updated_at?: string
 }
 
 interface UserProfile {
@@ -129,6 +130,8 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [saved, setSaved] = useState(false)
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null)
   const [step, setStep] = useState(0)
   const [isOnboarding, setIsOnboarding] = useState(false)
 
@@ -167,6 +170,9 @@ export default function SettingsPage() {
         const data = await res.json()
         setProfile(data)
         initFormFromPreferences(data.preferences)
+        if (data.preferences?.updated_at) {
+          setLastSavedAt(data.preferences.updated_at)
+        }
       } else {
         setError('Could not load profile. Please try signing up again.')
       }
@@ -195,6 +201,7 @@ export default function SettingsPage() {
     try {
       setSaving(true)
       setError(null)
+      setSaved(false)
 
       const res = await fetch('/api/profile/preferences', {
         method: 'PUT',
@@ -211,15 +218,20 @@ export default function SettingsPage() {
         })
       })
 
-      if (!res.ok) throw new Error('Failed to save preferences')
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        throw new Error(errData.error || 'Failed to save preferences')
+      }
 
       markPrefsComplete()
+      setSaved(true)
+      setLastSavedAt(new Date().toISOString())
 
       if (isOnboarding) {
         router.push('/for-you')
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error')
+      setError(err instanceof Error ? err.message : 'Failed to save. Please try again.')
     } finally {
       setSaving(false)
     }
@@ -358,6 +370,12 @@ export default function SettingsPage() {
           </div>
         )}
 
+        {saved && !isOnboarding && (
+          <div className="mb-6 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-sm text-emerald-700">
+            Preferences saved successfully.
+          </div>
+        )}
+
         {/* Step content */}
         {stepContent[step]}
 
@@ -393,10 +411,11 @@ export default function SettingsPage() {
           </button>
         </div>
 
-        {/* Version info for returning users */}
-        {!isOnboarding && profile?.preferences?.preference_version && (
+        {/* Last saved info for returning users */}
+        {!isOnboarding && lastSavedAt && (
           <p className="text-xs text-slate-400 text-center mt-6">
-            Preference version {profile.preferences.preference_version}
+            Last saved {new Date(lastSavedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+            {profile?.preferences?.preference_version ? ` · v${profile.preferences.preference_version}` : ''}
           </p>
         )}
       </div>

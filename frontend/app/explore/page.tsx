@@ -26,6 +26,15 @@ const DOMAIN_CATEGORIES: { key: string; label: string; keywords: string[] }[] = 
   { key: 'data', label: 'Data & Analytics', keywords: ['data', 'analytics', 'etl', 'pipeline', 'warehouse', 'visualization', 'dashboard', 'metric', 'observability', 'monitoring', 'logging'] },
 ]
 
+const STAGE_FILTERS: { key: string; label: string }[] = [
+  { key: 'all', label: 'Any stage' },
+  { key: 'emerging', label: 'Emerging' },
+  { key: 'rising', label: 'Rising' },
+  { key: 'peaking', label: 'Peaking' },
+  { key: 'stable', label: 'Stable' },
+  { key: 'declining', label: 'Declining' },
+]
+
 function matchesDomain(theme: string, keywords: string[]): boolean {
   if (keywords.length === 0) return true
   const lower = theme.toLowerCase()
@@ -136,16 +145,43 @@ async function getTrends(): Promise<{ trends: TrendItem[]; snapshotTime: string 
 export default async function ExplorePage({
   searchParams,
 }: {
-  searchParams: Promise<{ domain?: string }>
+  searchParams: Promise<{ domain?: string; stage?: string; q?: string }>
 }) {
-  const { domain: activeDomain } = await searchParams
+  const { domain: activeDomain, stage: activeStage, q: searchQuery } = await searchParams
   const selectedDomain = activeDomain || 'all'
+  const selectedStage = activeStage || 'all'
+  const query = searchQuery?.trim().toLowerCase() || ''
   const { trends, snapshotTime } = await getTrends()
 
   const domainConfig = DOMAIN_CATEGORIES.find(d => d.key === selectedDomain)
-  const filteredTrends = domainConfig
+  let filteredTrends = domainConfig
     ? trends.filter(t => matchesDomain(t.theme, domainConfig.keywords))
     : trends
+
+  // Apply stage filter
+  if (selectedStage !== 'all') {
+    filteredTrends = filteredTrends.filter(t => t.stage === selectedStage && t.comparable && t.stage_confidence >= 0.5)
+  }
+
+  // Apply search query
+  if (query) {
+    filteredTrends = filteredTrends.filter(t => {
+      const text = `${t.theme} ${t.description || ''}`.toLowerCase()
+      return text.includes(query)
+    })
+  }
+
+  // Build URL helper for filters
+  function buildFilterUrl(params: { domain?: string; stage?: string; q?: string }) {
+    const parts: string[] = []
+    const d = params.domain ?? selectedDomain
+    const s = params.stage ?? selectedStage
+    const search = params.q ?? query
+    if (d && d !== 'all') parts.push(`domain=${d}`)
+    if (s && s !== 'all') parts.push(`stage=${s}`)
+    if (search) parts.push(`q=${encodeURIComponent(search)}`)
+    return parts.length > 0 ? `/explore?${parts.join('&')}` : '/explore'
+  }
 
   return (
     <div className="min-h-screen bg-white">
@@ -162,7 +198,26 @@ export default async function ExplorePage({
           )}
         </div>
 
-        <div className="flex items-center gap-1.5 mb-8 overflow-x-auto pb-1">
+        {/* Search */}
+        <form action="/explore" method="GET" className="mb-4">
+          <div className="relative">
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              type="text"
+              name="q"
+              defaultValue={query}
+              placeholder="Search trends..."
+              className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition"
+            />
+            {selectedDomain !== 'all' && <input type="hidden" name="domain" value={selectedDomain} />}
+            {selectedStage !== 'all' && <input type="hidden" name="stage" value={selectedStage} />}
+          </div>
+        </form>
+
+        {/* Domain filter tabs */}
+        <div className="flex items-center gap-1.5 mb-4 overflow-x-auto pb-1">
           {DOMAIN_CATEGORIES.map(cat => {
             const isActive = cat.key === selectedDomain
             const count = cat.key === 'all'
@@ -172,7 +227,7 @@ export default async function ExplorePage({
             return (
               <Link
                 key={cat.key}
-                href={cat.key === 'all' ? '/explore' : `/explore?domain=${cat.key}`}
+                href={buildFilterUrl({ domain: cat.key })}
                 className={`shrink-0 px-3.5 py-1.5 rounded-lg text-sm font-medium transition border ${
                   isActive
                     ? 'bg-slate-900 text-white border-slate-900'
@@ -188,13 +243,47 @@ export default async function ExplorePage({
           })}
         </div>
 
+        {/* Stage filter */}
+        <div className="flex items-center gap-1.5 mb-8 overflow-x-auto pb-1">
+          {STAGE_FILTERS.map(sf => {
+            const isActive = sf.key === selectedStage
+            return (
+              <Link
+                key={sf.key}
+                href={buildFilterUrl({ stage: sf.key })}
+                className={`shrink-0 px-3 py-1 rounded-md text-xs font-medium transition border ${
+                  isActive
+                    ? 'bg-slate-700 text-white border-slate-700'
+                    : 'bg-white text-slate-500 border-slate-150 hover:border-slate-300 hover:bg-slate-50'
+                }`}
+              >
+                {sf.label}
+              </Link>
+            )
+          })}
+        </div>
+
+        {/* Active filters summary */}
+        {(query || selectedStage !== 'all') && (
+          <div className="flex items-center gap-2 mb-4 text-xs text-slate-500">
+            <span>Showing {filteredTrends.length} result{filteredTrends.length !== 1 ? 's' : ''}</span>
+            {query && <span className="bg-slate-100 px-2 py-0.5 rounded">Search: &quot;{query}&quot;</span>}
+            {selectedStage !== 'all' && <span className="bg-slate-100 px-2 py-0.5 rounded">Stage: {selectedStage}</span>}
+            <Link href={buildFilterUrl({ q: '', stage: 'all', domain: selectedDomain })} className="text-slate-400 hover:text-slate-600 underline">
+              Clear filters
+            </Link>
+          </div>
+        )}
+
         {filteredTrends.length === 0 ? (
           <div className="border border-slate-200 rounded-xl p-10 text-center">
             <p className="text-sm text-slate-600 mb-2">
-              {selectedDomain !== 'all' ? 'No trends match this category.' : 'No trends detected yet.'}
+              {query ? `No trends matching "${query}".` : selectedDomain !== 'all' ? 'No trends match this category.' : 'No trends detected yet.'}
             </p>
             <p className="text-xs text-slate-400">
-              {selectedDomain !== 'all'
+              {query
+                ? 'Try a different search term or clear filters.'
+                : selectedDomain !== 'all'
                 ? 'Try a different category or view all trends.'
                 : 'Trends appear after the daily pipeline runs.'}
             </p>
@@ -232,6 +321,10 @@ export default async function ExplorePage({
                         <span className="text-xs text-slate-400">Collecting data</span>
                       )}
                     </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 mt-2 text-xs text-slate-400">
+                    <span>{trend.signal_count} signal{trend.signal_count !== 1 ? 's' : ''}</span>
                   </div>
 
                   {trend.top_signals.length > 0 && (
