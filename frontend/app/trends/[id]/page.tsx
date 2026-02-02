@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import { SourceBadge } from '../../components/SourceBadge'
 
 interface TrajectoryPoint {
   snapshot_id: string
@@ -26,9 +27,16 @@ interface CompetitionData {
   confidence: number
 }
 
+interface SignalData {
+  title: string
+  source: string
+  url: string | null
+}
+
 interface TrendData {
   id: string
   theme: string
+  description: string | null
   status: string
   first_seen: string
   trajectory: TrajectoryPoint[]
@@ -39,12 +47,13 @@ interface TrendData {
   total_snapshots: number
   timing: TimingData | null
   competition: CompetitionData | null
+  signals: SignalData[]
 }
 
 async function getTrendData(id: string): Promise<TrendData | null> {
   const { data: trend } = await supabase
     .from('detected_trends')
-    .select('id, theme, status, first_seen')
+    .select('id, theme, description, status, first_seen')
     .eq('id', id)
     .single()
 
@@ -74,7 +83,6 @@ async function getTrendData(id: string): Promise<TrendData | null> {
     total_snapshots = trajectoryRow.total_snapshots || 0
   }
 
-  // Fetch timing signal (latest)
   let timing: TimingData | null = null
   const { data: timingRow } = await supabase
     .from('trend_timing_signals')
@@ -88,7 +96,6 @@ async function getTrendData(id: string): Promise<TrendData | null> {
     timing = { timing_label: timingRow.timing_label, confidence: timingRow.confidence }
   }
 
-  // Fetch competition data (latest)
   let competition: CompetitionData | null = null
   const { data: compRow } = await supabase
     .from('trend_competitive_intelligence')
@@ -106,8 +113,27 @@ async function getTrendData(id: string): Promise<TrendData | null> {
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: signalRows } = await supabase
+    .from('trend_signals')
+    .select('raw_signals!inner(title, source, url, score)')
+    .eq('trend_id', id)
+    .limit(15) as { data: any[] | null }
+
+  const seen = new Set<string>()
+  const signals: SignalData[] = []
+  for (const row of (signalRows || [])) {
+    const sig = row.raw_signals
+    if (!sig) continue
+    const key = sig.url || sig.title
+    if (seen.has(key)) continue
+    seen.add(key)
+    signals.push({ title: sig.title, source: sig.source, url: sig.url || null })
+  }
+
   return {
     ...trend,
+    description: trend.description || null,
     trajectory,
     peak_momentum,
     peak_momentum_at,
@@ -115,11 +141,10 @@ async function getTrendData(id: string): Promise<TrendData | null> {
     qualified_count,
     total_snapshots,
     timing,
-    competition
+    competition,
+    signals: signals.slice(0, 10),
   }
 }
-
-// --- UI Helper Components ---
 
 const TIMING_CONFIG: Record<string, { text: string; color: string; description: string }> = {
   too_early: { text: 'Too Early', color: 'bg-blue-100 text-blue-700', description: 'Not enough data to act yet' },
@@ -129,69 +154,22 @@ const TIMING_CONFIG: Record<string, { text: string; color: string; description: 
   timing_uncertain: { text: 'Uncertain', color: 'bg-gray-100 text-gray-600', description: 'Insufficient data for timing classification' }
 }
 
-const COMPETITION_CONFIG: Record<string, { text: string; color: string }> = {
-  low: { text: 'Low', color: 'bg-emerald-100 text-emerald-700' },
-  moderate: { text: 'Moderate', color: 'bg-yellow-100 text-yellow-700' },
-  high: { text: 'High', color: 'bg-red-100 text-red-700' },
-  uncertain: { text: 'Unknown', color: 'bg-gray-100 text-gray-600' }
+const COMPETITION_CONFIG: Record<string, { text: string; color: string; description: string }> = {
+  low: { text: 'Low competition', color: 'bg-emerald-100 text-emerald-700', description: 'Few established players' },
+  moderate: { text: 'Moderate competition', color: 'bg-yellow-100 text-yellow-700', description: 'Some competition exists' },
+  high: { text: 'High competition', color: 'bg-red-100 text-red-700', description: 'Many players building here' },
+  uncertain: { text: 'Unknown', color: 'bg-gray-100 text-gray-600', description: 'Not enough data to assess' }
 }
 
 const STAGE_CONFIG: Record<string, { label: string; color: string }> = {
-  emerging: { label: 'Emerging', color: 'bg-blue-500' },
-  rising: { label: 'Rising', color: 'bg-green-500' },
-  peaking: { label: 'Peaking', color: 'bg-yellow-500' },
-  stable: { label: 'Stable', color: 'bg-gray-400' },
-  declining: { label: 'Declining', color: 'bg-red-500' }
+  emerging: { label: 'Emerging', color: 'bg-blue-100 text-blue-700' },
+  rising: { label: 'Rising', color: 'bg-green-100 text-green-700' },
+  peaking: { label: 'Peaking', color: 'bg-yellow-100 text-yellow-700' },
+  stable: { label: 'Stable', color: 'bg-gray-100 text-gray-700' },
+  declining: { label: 'Declining', color: 'bg-red-100 text-red-700' }
 }
 
 const STAGES_ORDER = ['emerging', 'rising', 'peaking', 'stable', 'declining']
-
-function LifecycleTimeline({ currentStage }: { currentStage: string }) {
-  const currentIdx = STAGES_ORDER.indexOf(currentStage)
-  return (
-    <div className="flex items-center gap-1.5">
-      {STAGES_ORDER.map((stage, i) => {
-        const config = STAGE_CONFIG[stage]
-        const isCurrent = stage === currentStage
-        const isPast = currentIdx >= 0 && i < currentIdx
-        return (
-          <div key={stage} className="flex items-center gap-1.5">
-            <div className="flex flex-col items-center">
-              <div
-                className={`h-2.5 rounded-full transition-all ${
-                  isCurrent ? `${config.color} w-12` :
-                  isPast ? `${config.color} opacity-40 w-6` :
-                  'bg-gray-200 w-6'
-                }`}
-              />
-              <span className={`text-xs mt-1 ${isCurrent ? 'text-gray-700 font-medium' : 'text-gray-400'}`}>
-                {config.label}
-              </span>
-            </div>
-            {i < STAGES_ORDER.length - 1 && (
-              <div className={`w-3 h-px ${isPast || isCurrent ? 'bg-gray-400' : 'bg-gray-200'}`} />
-            )}
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
-function DeltaBadge({ value, label, suffix }: { value: number; label: string; suffix?: string }) {
-  const isPositive = value > 0
-  const isZero = value === 0
-  return (
-    <div className="flex items-center gap-1.5 text-sm">
-      <span className="text-gray-500">{label}:</span>
-      <span className={isZero ? 'text-gray-400' : isPositive ? 'text-emerald-600' : 'text-red-600'}>
-        {isPositive ? '+' : ''}{value.toFixed(3)}{suffix || ''}
-      </span>
-    </div>
-  )
-}
-
-// --- Chart Components ---
 
 function getDateRange(start: string, end: string): string[] {
   const dates: string[] = []
@@ -243,7 +221,6 @@ function MomentumChart({ trajectory }: { trajectory: TrajectoryPoint[] }) {
   }))
 
   const gapCount = filledData.filter(d => !d.hasData).length
-
   const momentums = trajectory.map(p => p.momentum || 0)
   const maxMomentum = Math.max(...momentums, 0.1)
   const minMomentum = Math.min(...momentums, 0)
@@ -259,7 +236,6 @@ function MomentumChart({ trajectory }: { trajectory: TrajectoryPoint[] }) {
 
   filledData.forEach((d, i) => {
     const x = padding + (i / (filledData.length - 1 || 1)) * (width - 2 * padding)
-
     if (d.hasData && d.point) {
       const y = height - padding - ((d.point.momentum || 0) - minMomentum) / range * (height - 2 * padding)
       if (lastWasGap && currentSegment.length > 0) {
@@ -290,52 +266,19 @@ function MomentumChart({ trajectory }: { trajectory: TrajectoryPoint[] }) {
       )}
       <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full" preserveAspectRatio="none">
         {segments.map((seg, i) => (
-          <polyline
-            key={i}
-            fill="none"
-            stroke="#10b981"
-            strokeWidth="0.5"
-            points={seg.points}
-          />
+          <polyline key={i} fill="none" stroke="#10b981" strokeWidth="0.5" points={seg.points} />
         ))}
         {filledData.map((d, i) => {
           if (!d.hasData || !d.point) return null
           const x = padding + (i / (filledData.length - 1 || 1)) * (width - 2 * padding)
           const y = height - padding - ((d.point.momentum || 0) - minMomentum) / range * (height - 2 * padding)
           return (
-            <circle
-              key={i}
-              cx={x}
-              cy={y}
-              r={d.point.qualified ? 1.5 : 0.8}
-              fill={d.point.qualified ? '#10b981' : '#9ca3af'}
-            />
-          )
-        })}
-        {filledData.map((d, i) => {
-          if (d.hasData) return null
-          const x = padding + (i / (filledData.length - 1 || 1)) * (width - 2 * padding)
-          return (
-            <line
-              key={`gap-${i}`}
-              x1={x}
-              y1={padding}
-              x2={x}
-              y2={height - padding}
-              stroke="#fcd34d"
-              strokeWidth="0.3"
-              strokeDasharray="1,1"
-              opacity={0.5}
-            />
+            <circle key={i} cx={x} cy={y} r={d.point.qualified ? 1.5 : 0.8} fill={d.point.qualified ? '#10b981' : '#9ca3af'} />
           )
         })}
       </svg>
-      <div className="absolute top-0 right-0 text-xs text-gray-400">
-        {maxMomentum.toFixed(2)}
-      </div>
-      <div className="absolute bottom-0 right-0 text-xs text-gray-400">
-        {minMomentum.toFixed(2)}
-      </div>
+      <div className="absolute top-0 right-0 text-xs text-gray-400">{maxMomentum.toFixed(2)}</div>
+      <div className="absolute bottom-0 right-0 text-xs text-gray-400">{minMomentum.toFixed(2)}</div>
     </div>
   )
 }
@@ -350,12 +293,11 @@ function StageTimeline({ trajectory }: { trajectory: TrajectoryPoint[] }) {
   }
 
   const stages: { stage: string; count: number }[] = []
-  let currentStage = ''
-
+  let cs = ''
   for (const point of trajectory) {
-    if (point.stage && point.stage !== currentStage) {
+    if (point.stage && point.stage !== cs) {
       stages.push({ stage: point.stage, count: 1 })
-      currentStage = point.stage
+      cs = point.stage
     } else if (stages.length > 0) {
       stages[stages.length - 1].count++
     }
@@ -383,63 +325,6 @@ function StageTimeline({ trajectory }: { trajectory: TrajectoryPoint[] }) {
   )
 }
 
-// --- What Changed Since Yesterday (NICE-TO-HAVE 9) ---
-
-function WhatChanged({ trajectory }: { trajectory: TrajectoryPoint[] }) {
-  if (trajectory.length < 2) return null
-
-  const latest = trajectory[trajectory.length - 1]
-  const previous = trajectory[trajectory.length - 2]
-
-  const momentumDelta = (latest.momentum || 0) - (previous.momentum || 0)
-  const signalDelta = (latest.signal_count || 0) - (previous.signal_count || 0)
-  const stageChanged = latest.stage !== previous.stage
-  const qualificationChanged = latest.qualified !== previous.qualified
-  const confidenceDelta = (latest.stage_confidence || 0) - (previous.stage_confidence || 0)
-
-  const hasChanges = momentumDelta !== 0 || signalDelta !== 0 || stageChanged || qualificationChanged
-
-  if (!hasChanges) return null
-
-  return (
-    <div className="border border-gray-200 rounded-lg p-4 mb-8">
-      <h3 className="text-sm font-semibold text-gray-700 mb-3">What changed since last snapshot</h3>
-      <div className="flex flex-wrap gap-x-6 gap-y-2">
-        <DeltaBadge value={momentumDelta} label="Momentum" />
-        {signalDelta !== 0 && (
-          <div className="flex items-center gap-1.5 text-sm">
-            <span className="text-gray-500">Signals:</span>
-            <span className={signalDelta > 0 ? 'text-emerald-600' : 'text-red-600'}>
-              {signalDelta > 0 ? '+' : ''}{signalDelta}
-            </span>
-          </div>
-        )}
-        {confidenceDelta !== 0 && (
-          <DeltaBadge value={confidenceDelta} label="Confidence" />
-        )}
-        {stageChanged && (
-          <div className="flex items-center gap-1.5 text-sm">
-            <span className="text-gray-500">Stage:</span>
-            <span className="text-gray-400">{previous.stage}</span>
-            <span className="text-gray-400">→</span>
-            <span className="text-gray-900 font-medium">{latest.stage}</span>
-          </div>
-        )}
-        {qualificationChanged && (
-          <div className="flex items-center gap-1.5 text-sm">
-            <span className="text-gray-500">Qualified:</span>
-            <span className={latest.qualified ? 'text-emerald-600 font-medium' : 'text-red-600'}>
-              {latest.qualified ? 'Yes (new)' : 'No longer'}
-            </span>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-// --- Main Page ---
-
 export default async function TrendDetailPage({
   params
 }: {
@@ -455,194 +340,203 @@ export default async function TrendDetailPage({
   const latestPoint = trend.trajectory[trend.trajectory.length - 1]
   const timingConfig = trend.timing ? TIMING_CONFIG[trend.timing.timing_label] : null
   const compConfig = trend.competition ? COMPETITION_CONFIG[trend.competition.competition_level] : null
+  const stageConfig = trend.current_stage ? STAGE_CONFIG[trend.current_stage] : null
+
+  const narrativeParts: string[] = []
+  if (trend.description) {
+    narrativeParts.push(trend.description)
+  }
+  if (stageConfig && trend.current_stage) {
+    narrativeParts.push(`This trend is currently in the ${stageConfig.label.toLowerCase()} phase.`)
+  }
+  if (timingConfig) {
+    narrativeParts.push(timingConfig.description + '.')
+  }
+  if (compConfig) {
+    narrativeParts.push(compConfig.description + '.')
+  }
 
   return (
     <div className="min-h-screen bg-white">
-      <div className="border-b border-gray-200 bg-gray-50">
-        <div className="max-w-4xl mx-auto px-6 py-12">
-          <Link
-            href="/explore"
-            className="text-gray-600 hover:text-gray-900 mb-4 inline-block"
-          >
-            ← Back to Explore
-          </Link>
-          <h1 className="text-4xl font-bold text-gray-900 mb-3">
-            {trend.theme}
-          </h1>
+      <div className="max-w-3xl mx-auto px-6 py-10">
+        <div className="flex items-center gap-3 mb-6 text-sm">
+          <Link href="/for-you" className="text-slate-400 hover:text-slate-600 transition">For You</Link>
+          <span className="text-slate-300">/</span>
+          <Link href="/explore" className="text-slate-400 hover:text-slate-600 transition">Explore</Link>
+        </div>
 
-          {/* Lifecycle timeline (SHOULD-DO 5) */}
-          {trend.current_stage && (
-            <div className="mb-4">
-              <LifecycleTimeline currentStage={trend.current_stage} />
-            </div>
+        <h1 className="text-3xl font-bold text-slate-900 tracking-tight mb-3">
+          {trend.theme}
+        </h1>
+
+        {narrativeParts.length > 0 && (
+          <p className="text-sm text-slate-500 leading-relaxed mb-6 max-w-2xl">
+            {narrativeParts.join(' ')}
+          </p>
+        )}
+
+        <div className="flex items-center gap-2 flex-wrap mb-8">
+          {stageConfig && (
+            <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${stageConfig.color}`}>
+              {stageConfig.label}
+            </span>
           )}
+          {timingConfig && (
+            <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${timingConfig.color}`}>
+              {timingConfig.text}
+            </span>
+          )}
+          {compConfig && (
+            <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${compConfig.color}`}>
+              {compConfig.text}
+            </span>
+          )}
+        </div>
 
-          {/* Intelligence badges */}
-          <div className="flex items-center gap-3 flex-wrap text-sm">
-            <span className="text-gray-500">{trend.total_snapshots} snapshots tracked</span>
-            <span className="text-gray-300">|</span>
-            <span className="text-gray-500">First seen: {new Date(trend.first_seen).toLocaleDateString()}</span>
+        {trend.signals.length > 0 && (
+          <div className="mb-10">
+            <h2 className="text-lg font-semibold text-slate-900 mb-4">Evidence</h2>
+            <div className="space-y-3">
+              {trend.signals.map((sig, i) => (
+                <div key={i} className="flex items-start gap-3 py-2">
+                  <SourceBadge source={sig.source} />
+                  <div className="min-w-0">
+                    {sig.url ? (
+                      <a
+                        href={sig.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm text-slate-700 hover:text-emerald-600 transition"
+                      >
+                        {sig.title}
+                      </a>
+                    ) : (
+                      <span className="text-sm text-slate-700">{sig.title}</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
-            {timingConfig && (
-              <>
-                <span className="text-gray-300">|</span>
-                <span className="relative group">
-                  <span className={`px-2 py-1 rounded text-xs font-medium ${timingConfig.color} cursor-help`}>
-                    Timing: {timingConfig.text}
-                  </span>
-                  <span className="absolute bottom-full left-0 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition pointer-events-none w-48 z-10">
-                    {timingConfig.description} ({Math.round((trend.timing?.confidence || 0) * 100)}% confidence)
-                  </span>
-                </span>
-              </>
+        <details className="border border-slate-200 rounded-xl mb-8">
+          <summary className="px-5 py-4 cursor-pointer text-sm font-semibold text-slate-700 hover:text-slate-900 transition">
+            Detailed analytics
+          </summary>
+          <div className="px-5 pb-6 pt-2 border-t border-slate-100">
+            {latestPoint && (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                <div className="border border-gray-200 rounded-lg p-3">
+                  <div className="text-xs text-gray-500 mb-1">Current Momentum</div>
+                  <div className="text-xl font-bold text-gray-900">
+                    {latestPoint.momentum?.toFixed(2) || '\u2014'}
+                  </div>
+                </div>
+                <div className="border border-gray-200 rounded-lg p-3">
+                  <div className="text-xs text-gray-500 mb-1">Peak Momentum</div>
+                  <div className="text-xl font-bold text-gray-900">
+                    {trend.peak_momentum?.toFixed(2) || '\u2014'}
+                  </div>
+                </div>
+                <div className="border border-gray-200 rounded-lg p-3">
+                  <div className="text-xs text-gray-500 mb-1">Times Qualified</div>
+                  <div className="text-xl font-bold text-gray-900">{trend.qualified_count}</div>
+                </div>
+                <div className="border border-gray-200 rounded-lg p-3">
+                  <div className="text-xs text-gray-500 mb-1">Current Signals</div>
+                  <div className="text-xl font-bold text-gray-900">
+                    {latestPoint.signal_count || '\u2014'}
+                  </div>
+                </div>
+              </div>
             )}
 
-            {compConfig && (
-              <>
-                <span className="text-gray-300">|</span>
-                <span className="relative group">
-                  <span className={`px-2 py-1 rounded text-xs font-medium ${compConfig.color} cursor-help`}>
-                    Competition: {compConfig.text}
+            <div className="mb-8">
+              <h3 className="text-sm font-semibold text-gray-700 mb-3">Momentum Over Time</h3>
+              <div className="border border-gray-200 rounded-lg p-4">
+                <MomentumChart trajectory={trend.trajectory} />
+                <div className="flex justify-between text-xs text-gray-400 mt-2">
+                  <span>
+                    {trend.trajectory[0]?.timestamp
+                      ? new Date(trend.trajectory[0].timestamp).toLocaleDateString()
+                      : '\u2014'}
                   </span>
-                  {trend.competition && (
-                    <span className="absolute bottom-full left-0 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition pointer-events-none w-48 z-10">
-                      Saturation: {Math.round(trend.competition.saturation_score * 100)}%
+                  <span>
+                    {latestPoint?.timestamp
+                      ? new Date(latestPoint.timestamp).toLocaleDateString()
+                      : '\u2014'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="mb-8">
+              <h3 className="text-sm font-semibold text-gray-700 mb-3">Lifecycle Stages</h3>
+              <div className="border border-gray-200 rounded-lg p-4">
+                <StageTimeline trajectory={trend.trajectory} />
+                <div className="flex gap-4 mt-3 text-xs">
+                  {STAGES_ORDER.map(stage => (
+                    <span key={stage} className="flex items-center gap-1">
+                      <span className={`w-3 h-3 rounded ${STAGE_CONFIG[stage]?.color.split(' ')[0] || 'bg-gray-100'}`}></span>
+                      {STAGE_CONFIG[stage]?.label || stage}
                     </span>
-                  )}
-                </span>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
+                  ))}
+                </div>
+              </div>
+            </div>
 
-      <div className="max-w-4xl mx-auto px-6 py-12">
-        {/* What changed since yesterday (NICE-TO-HAVE 9) */}
-        <WhatChanged trajectory={trend.trajectory} />
-
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-12">
-          <div className="border border-gray-200 rounded-lg p-4">
-            <div className="text-sm text-gray-500 mb-1">Current Momentum</div>
-            <div className="text-2xl font-bold text-gray-900">
-              {latestPoint?.momentum?.toFixed(2) || '—'}
+            <div>
+              <h3 className="text-sm font-semibold text-gray-700 mb-3">Snapshot History</h3>
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-2.5 text-left text-gray-600 font-medium text-xs">Date</th>
+                      <th className="px-4 py-2.5 text-left text-gray-600 font-medium text-xs">Momentum</th>
+                      <th className="px-4 py-2.5 text-left text-gray-600 font-medium text-xs">Signals</th>
+                      <th className="px-4 py-2.5 text-left text-gray-600 font-medium text-xs">Stage</th>
+                      <th className="px-4 py-2.5 text-left text-gray-600 font-medium text-xs">Qualified</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...trend.trajectory].reverse().slice(0, 10).map((point, i) => (
+                      <tr key={i} className="border-t border-gray-100">
+                        <td className="px-4 py-2.5 text-gray-900 text-xs">
+                          {point.timestamp ? new Date(point.timestamp).toLocaleDateString() : '\u2014'}
+                        </td>
+                        <td className="px-4 py-2.5 text-gray-900 text-xs tabular-nums">
+                          {point.momentum?.toFixed(3) || '\u2014'}
+                        </td>
+                        <td className="px-4 py-2.5 text-gray-900 text-xs">
+                          {point.signal_count || '\u2014'}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          {point.stage && (
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${
+                              STAGE_CONFIG[point.stage]?.color || 'bg-gray-100 text-gray-700'
+                            }`}>
+                              {point.stage}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          {point.qualified ? (
+                            <span className="text-green-600 text-xs">Yes</span>
+                          ) : (
+                            <span className="text-gray-300 text-xs">\u2014</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
-          <div className="border border-gray-200 rounded-lg p-4">
-            <div className="text-sm text-gray-500 mb-1">Peak Momentum</div>
-            <div className="text-2xl font-bold text-gray-900">
-              {trend.peak_momentum?.toFixed(2) || '—'}
-            </div>
-          </div>
-          <div className="border border-gray-200 rounded-lg p-4">
-            <div className="text-sm text-gray-500 mb-1">Times Qualified</div>
-            <div className="text-2xl font-bold text-gray-900">
-              {trend.qualified_count}
-            </div>
-          </div>
-          <div className="border border-gray-200 rounded-lg p-4">
-            <div className="text-sm text-gray-500 mb-1">Current Signals</div>
-            <div className="text-2xl font-bold text-gray-900">
-              {latestPoint?.signal_count || '—'}
-            </div>
-          </div>
-        </div>
+        </details>
 
-        <div className="mb-12">
-          <h2 className="text-xl font-bold text-gray-900 mb-4">Momentum Over Time</h2>
-          <div className="border border-gray-200 rounded-lg p-6">
-            <MomentumChart trajectory={trend.trajectory} />
-            <div className="flex justify-between text-xs text-gray-400 mt-2">
-              <span>
-                {trend.trajectory[0]?.timestamp
-                  ? new Date(trend.trajectory[0].timestamp).toLocaleDateString()
-                  : '—'}
-              </span>
-              <span>
-                {latestPoint?.timestamp
-                  ? new Date(latestPoint.timestamp).toLocaleDateString()
-                  : '—'}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <div className="mb-12">
-          <h2 className="text-xl font-bold text-gray-900 mb-4">Lifecycle Stages</h2>
-          <div className="border border-gray-200 rounded-lg p-6">
-            <StageTimeline trajectory={trend.trajectory} />
-            <div className="flex gap-4 mt-4 text-xs">
-              <span className="flex items-center gap-1">
-                <span className="w-3 h-3 rounded bg-blue-100"></span> Emerging
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="w-3 h-3 rounded bg-green-100"></span> Rising
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="w-3 h-3 rounded bg-yellow-100"></span> Peaking
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="w-3 h-3 rounded bg-gray-100"></span> Stable
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="w-3 h-3 rounded bg-red-100"></span> Declining
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <div>
-          <h2 className="text-xl font-bold text-gray-900 mb-4">Snapshot History</h2>
-          <div className="border border-gray-200 rounded-lg overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-3 text-left text-gray-600 font-medium">Date</th>
-                  <th className="px-4 py-3 text-left text-gray-600 font-medium">Momentum</th>
-                  <th className="px-4 py-3 text-left text-gray-600 font-medium">Signals</th>
-                  <th className="px-4 py-3 text-left text-gray-600 font-medium">Stage</th>
-                  <th className="px-4 py-3 text-left text-gray-600 font-medium">Qualified</th>
-                </tr>
-              </thead>
-              <tbody>
-                {[...trend.trajectory].reverse().slice(0, 10).map((point, i) => (
-                  <tr key={i} className="border-t border-gray-100">
-                    <td className="px-4 py-3 text-gray-900">
-                      {point.timestamp ? new Date(point.timestamp).toLocaleDateString() : '—'}
-                    </td>
-                    <td className="px-4 py-3 text-gray-900">
-                      {point.momentum?.toFixed(3) || '—'}
-                    </td>
-                    <td className="px-4 py-3 text-gray-900">
-                      {point.signal_count || '—'}
-                    </td>
-                    <td className="px-4 py-3">
-                      {point.stage && (
-                        <span className={`px-2 py-1 rounded text-xs ${
-                          point.stage === 'rising' ? 'bg-green-100 text-green-700' :
-                          point.stage === 'emerging' ? 'bg-blue-100 text-blue-700' :
-                          point.stage === 'peaking' ? 'bg-yellow-100 text-yellow-700' :
-                          'bg-gray-100 text-gray-700'
-                        }`}>
-                          {point.stage}
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      {point.qualified ? (
-                        <span className="text-green-600">✓</span>
-                      ) : (
-                        <span className="text-gray-300">—</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Model versioning (NICE-TO-HAVE 11) */}
-        <div className="mt-12 pt-6 border-t border-gray-100 text-xs text-gray-400">
+        <div className="text-xs text-gray-400">
           <details>
             <summary className="cursor-pointer hover:text-gray-600">System info</summary>
             <div className="mt-2 space-y-1">
@@ -650,6 +544,8 @@ export default async function TrendDetailPage({
               <p>Lifecycle: lifecycle-v1</p>
               {trend.timing && <p>Timing: timing-v1</p>}
               {trend.competition && <p>Competition: competition-v1</p>}
+              <p>{trend.total_snapshots} snapshots tracked</p>
+              <p>First seen: {new Date(trend.first_seen).toLocaleDateString()}</p>
             </div>
           </details>
         </div>

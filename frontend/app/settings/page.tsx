@@ -216,7 +216,7 @@ export default function SettingsPage() {
       markPrefsComplete()
 
       if (isOnboarding) {
-        router.push('/explore')
+        router.push('/for-you')
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error')

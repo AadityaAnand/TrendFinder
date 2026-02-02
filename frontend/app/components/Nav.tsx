@@ -38,8 +38,8 @@ export function Nav() {
 
         {isLoggedIn ? (
           <div className="flex items-center gap-6">
+            <NavLink href="/for-you" active={pathname === '/for-you'}>For You</NavLink>
             <NavLink href="/explore" active={pathname === '/explore'}>Explore</NavLink>
-            <NavLink href="/learn" active={pathname === '/learn'}>Learn</NavLink>
             <NavLink href="/settings" active={pathname === '/settings'}>Settings</NavLink>
             <button
               onClick={async () => {
@@ -53,12 +53,6 @@ export function Nav() {
           </div>
         ) : (
           <div className="flex items-center gap-6">
-            <a href="#how-it-works" className="text-sm text-slate-500 hover:text-slate-800 font-medium transition">
-              How it works
-            </a>
-            <a href="#trust" className="text-sm text-slate-500 hover:text-slate-800 font-medium transition">
-              Why trust it
-            </a>
             <Link
               href="/sign-in"
               className="text-sm text-slate-500 hover:text-slate-800 font-medium transition"
