@@ -40,6 +40,7 @@ interface Opportunity {
   suggested_actions: string | string[]
   qualified: boolean
   personalized_score: number
+  global_score: number
   fit_reasons: string[]
   detected_trends: {
     id: string
@@ -249,6 +250,11 @@ export default function ForYouPage() {
                       <div className="flex items-center gap-2 shrink-0">
                         {!opp.qualified && (
                           <span className="text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded">Collecting evidence</span>
+                        )}
+                        {opp.qualified && opp.personalized_score > 0 && (
+                          <span className="text-xs font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">
+                            {Math.round(opp.personalized_score * 100)}% match
+                          </span>
                         )}
                         {confidence !== null && <ConfidenceBadge score={confidence} />}
                       </div>

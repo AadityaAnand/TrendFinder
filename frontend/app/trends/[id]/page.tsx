@@ -33,6 +33,13 @@ interface SignalData {
   url: string | null
 }
 
+interface OpportunityData {
+  action_title: string
+  why_now: string | null
+  suggested_actions: string | string[] | null
+  qualified: boolean
+}
+
 interface TrendData {
   id: string
   theme: string
@@ -48,6 +55,7 @@ interface TrendData {
   timing: TimingData | null
   competition: CompetitionData | null
   signals: SignalData[]
+  opportunity: OpportunityData | null
 }
 
 async function getTrendData(id: string): Promise<TrendData | null> {
@@ -131,6 +139,32 @@ async function getTrendData(id: string): Promise<TrendData | null> {
     signals.push({ title: sig.title, source: sig.source, url: sig.url || null })
   }
 
+  let opportunity: OpportunityData | null = null
+  const { data: latestSnapshot } = await supabase
+    .from('trend_snapshots')
+    .select('id')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single()
+
+  if (latestSnapshot) {
+    const { data: oppRow } = await supabase
+      .from('trend_opportunities')
+      .select('action_title, why_now, suggested_actions, qualified')
+      .eq('trend_id', id)
+      .eq('snapshot_id', latestSnapshot.id)
+      .single()
+
+    if (oppRow) {
+      opportunity = {
+        action_title: oppRow.action_title,
+        why_now: oppRow.why_now || null,
+        suggested_actions: oppRow.suggested_actions || null,
+        qualified: oppRow.qualified || false,
+      }
+    }
+  }
+
   return {
     ...trend,
     description: trend.description || null,
@@ -143,6 +177,7 @@ async function getTrendData(id: string): Promise<TrendData | null> {
     timing,
     competition,
     signals: signals.slice(0, 10),
+    opportunity,
   }
 }
 
@@ -416,6 +451,52 @@ export default async function TrendDetailPage({
             </span>
           )}
         </div>
+
+        {trend.opportunity && trend.opportunity.qualified && (
+          <div className="mb-10 p-5 bg-emerald-50 border border-emerald-200 rounded-xl">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="w-2 h-2 rounded-full bg-emerald-500" />
+              <span className="text-sm font-semibold text-emerald-800">Qualified opportunity</span>
+            </div>
+            <h3 className="text-base font-semibold text-slate-900 mb-2">{trend.opportunity.action_title}</h3>
+            {trend.opportunity.why_now && (
+              <p className="text-sm text-slate-600 mb-3">{trend.opportunity.why_now}</p>
+            )}
+            {trend.opportunity.suggested_actions && (
+              <div>
+                <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1.5">What to build</p>
+                <ul className="space-y-1">
+                  {(Array.isArray(trend.opportunity.suggested_actions)
+                    ? trend.opportunity.suggested_actions
+                    : typeof trend.opportunity.suggested_actions === 'string'
+                    ? (() => { try { return JSON.parse(trend.opportunity.suggested_actions as string) } catch { return (trend.opportunity.suggested_actions as string).split('\n').filter(Boolean) } })()
+                    : []
+                  ).slice(0, 3).map((action: string, i: number) => (
+                    <li key={i} className="text-sm text-slate-700 flex gap-2">
+                      <span className="text-slate-400 shrink-0">-</span>
+                      <span>{action}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+
+        {trend.opportunity && !trend.opportunity.qualified && (
+          <div className="mb-10 p-5 bg-slate-50 border border-slate-200 rounded-xl">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="w-2 h-2 rounded-full bg-amber-400" />
+              <span className="text-sm font-semibold text-slate-700">Not qualified yet</span>
+            </div>
+            <p className="text-sm text-slate-500 mb-2">
+              This trend hasn&apos;t passed all evidence gates yet.
+            </p>
+            <p className="text-xs text-slate-400">
+              To qualify, a trend needs 2+ independent evidence sources, a buildable action, and sufficient lifecycle confidence.
+            </p>
+          </div>
+        )}
 
         {trend.signals.length > 0 && (
           <div className="mb-10">
