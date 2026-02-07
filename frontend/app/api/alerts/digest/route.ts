@@ -1,8 +1,8 @@
-import { supabase } from '@/lib/supabase'
+import { getServerSupabase } from '@/lib/supabase-server'
 import { NextResponse } from 'next/server'
 
-// GET /api/alerts/digest?user_id=xxx - Get alert digest summary
 export async function GET(request: Request) {
+  const supabase = getServerSupabase()
   const { searchParams } = new URL(request.url)
   const userId = searchParams.get('user_id')
   const days = parseInt(searchParams.get('days') || '7', 10)

@@ -1,8 +1,9 @@
-import { supabase } from '@/lib/supabase'
+import { getServerSupabase } from '@/lib/supabase-server'
 import { NextResponse } from 'next/server'
 
 // GET /api/profile/inferences?user_id=xxx - Get inferred preferences
 export async function GET(request: Request) {
+  const supabase = getServerSupabase()
   const { searchParams } = new URL(request.url)
   const userId = searchParams.get('user_id')
 
@@ -43,6 +44,7 @@ export async function GET(request: Request) {
 
 // POST /api/profile/inferences - Accept or reject inferences
 export async function POST(request: Request) {
+  const supabase = getServerSupabase()
   const body = await request.json()
   const { user_id, action, item } = body
 

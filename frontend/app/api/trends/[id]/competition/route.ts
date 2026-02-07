@@ -1,20 +1,14 @@
-import { supabase } from '@/lib/supabase'
+import { getServerSupabase, getLatestSnapshot } from '@/lib/supabase-server'
 import { NextResponse } from 'next/server'
 
-// GET /api/trends/[id]/competition - Get competitive intelligence for a trend
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const supabase = getServerSupabase()
   const { id: trendId } = await params
 
-  // Get latest snapshot
-  const { data: snapshot } = await supabase
-    .from('trend_snapshots')
-    .select('id')
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .single()
+  const snapshot = await getLatestSnapshot(supabase)
 
   if (!snapshot) {
     return NextResponse.json(
@@ -23,7 +17,6 @@ export async function GET(
     )
   }
 
-  // Get competitive intelligence
   const { data: intel, error } = await supabase
     .from('trend_competitive_intelligence')
     .select('*')
@@ -32,7 +25,6 @@ export async function GET(
     .single()
 
   if (error || !intel) {
-    // Try latest available
     const { data: latestIntel } = await supabase
       .from('trend_competitive_intelligence')
       .select('*')
@@ -48,7 +40,6 @@ export async function GET(
       )
     }
 
-    // Return with stale marker
     return NextResponse.json({
       intelligence: latestIntel,
       signals: [],
@@ -57,21 +48,18 @@ export async function GET(
     })
   }
 
-  // Get raw signals
   const { data: signals } = await supabase
     .from('competitive_signals')
     .select('signal_type, value, normalized_value, source, notes')
     .eq('trend_id', trendId)
     .eq('snapshot_id', snapshot.id)
 
-  // Get wedges
   const { data: wedges } = await supabase
     .from('trend_wedges')
     .select('wedge_type, trigger_reason, confidence')
     .eq('trend_id', trendId)
     .eq('snapshot_id', snapshot.id)
 
-  // Get competition history
   const { data: history } = await supabase
     .from('trend_competitive_intelligence')
     .select('saturation_score, competition_level, confidence, created_at')

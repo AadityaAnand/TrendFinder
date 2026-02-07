@@ -1,20 +1,14 @@
-import { supabase } from '@/lib/supabase'
+import { getServerSupabase, getLatestSnapshot } from '@/lib/supabase-server'
 import { NextResponse } from 'next/server'
 
-// GET /api/trends/[id]/timing - Get timing intelligence for a trend
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const supabase = getServerSupabase()
   const { id: trendId } = await params
 
-  // Get latest snapshot
-  const { data: snapshot } = await supabase
-    .from('trend_snapshots')
-    .select('id')
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .single()
+  const snapshot = await getLatestSnapshot(supabase)
 
   if (!snapshot) {
     return NextResponse.json(
@@ -23,7 +17,6 @@ export async function GET(
     )
   }
 
-  // Get timing signal for this trend
   const { data: timing, error } = await supabase
     .from('trend_timing_signals')
     .select('*')
@@ -32,7 +25,6 @@ export async function GET(
     .single()
 
   if (error || !timing) {
-    // Try to get the most recent timing for this trend
     const { data: latestTiming } = await supabase
       .from('trend_timing_signals')
       .select('*')
@@ -55,7 +47,6 @@ export async function GET(
     )
   }
 
-  // Get timing history for this trend
   const { data: history } = await supabase
     .from('trend_timing_signals')
     .select('timing_label, timing_confidence, expiry_risk, computed_at')

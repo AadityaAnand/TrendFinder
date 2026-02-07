@@ -1,11 +1,11 @@
-import { supabase } from '@/lib/supabase'
+import { getServerSupabase, getLatestSnapshot } from '@/lib/supabase-server'
 import { NextResponse } from 'next/server'
 
-// GET /api/opportunities/[id]/feasibility?user_id=xxx
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const supabase = getServerSupabase()
   const { id: opportunityId } = await params
   const { searchParams } = new URL(request.url)
   const userId = searchParams.get('user_id')
@@ -17,13 +17,7 @@ export async function GET(
     )
   }
 
-  // Get latest snapshot
-  const { data: snapshot } = await supabase
-    .from('trend_snapshots')
-    .select('id')
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .single()
+  const snapshot = await getLatestSnapshot(supabase)
 
   if (!snapshot) {
     return NextResponse.json(
@@ -32,7 +26,6 @@ export async function GET(
     )
   }
 
-  // Get execution verdict (the top-level summary)
   const { data: verdict } = await supabase
     .from('execution_verdicts')
     .select('*')
@@ -41,7 +34,6 @@ export async function GET(
     .eq('snapshot_id', snapshot.id)
     .single()
 
-  // Get feasibility details
   const { data: feasibility } = await supabase
     .from('execution_feasibility')
     .select('*')
@@ -50,7 +42,6 @@ export async function GET(
     .eq('snapshot_id', snapshot.id)
     .single()
 
-  // Get execution requirements
   const { data: requirements } = await supabase
     .from('execution_requirements')
     .select('*')
@@ -58,7 +49,6 @@ export async function GET(
     .eq('snapshot_id', snapshot.id)
     .single()
 
-  // Get moat classification
   const { data: moat } = await supabase
     .from('opportunity_moats')
     .select('*')
@@ -74,7 +64,6 @@ export async function GET(
   }
 
   return NextResponse.json({
-    // "Should you build this?"
     verdict: verdict ? {
       verdict: verdict.verdict,
       reasons: verdict.verdict_reasons,
@@ -82,8 +71,6 @@ export async function GET(
       risk_flags: verdict.risk_flags,
       model_version: verdict.model_version
     } : null,
-
-    // "Can you execute this?"
     feasibility: feasibility ? {
       score: feasibility.feasibility_score,
       team_fit: feasibility.team_fit,
@@ -95,8 +82,6 @@ export async function GET(
       blocking_factors: feasibility.blocking_factors,
       summary: feasibility.fit_summary
     } : null,
-
-    // "What does this require?"
     requirements: requirements ? {
       build_weeks: { min: requirements.build_weeks_min, max: requirements.build_weeks_max },
       maintenance_level: requirements.maintenance_level,
@@ -109,18 +94,13 @@ export async function GET(
       estimation_confidence: requirements.estimation_confidence,
       estimation_notes: requirements.estimation_notes
     } : null,
-
-    // "Is there a defensible path?"
     moat: moat ? {
       types: moat.moat_types,
       strength: moat.moat_strength,
       risk: moat.moat_risk,
       evidence: moat.moat_evidence
     } : null,
-
-    // Disclaimer (always present)
     disclaimer: 'This analysis is informational only. It does not constitute financial or business advice. All estimates are ranges, not commitments.',
-
     snapshot_id: snapshot.id
   })
 }

@@ -1,8 +1,9 @@
-import { supabase } from '@/lib/supabase'
+import { getServerSupabase } from '@/lib/supabase-server'
 import { NextResponse } from 'next/server'
 
 // GET /api/analytics/trust - Get trust analytics (internal use)
 export async function GET(request: Request) {
+  const supabase = getServerSupabase()
   const { searchParams } = new URL(request.url)
   const daysBack = parseInt(searchParams.get('days') || '30', 10)
 

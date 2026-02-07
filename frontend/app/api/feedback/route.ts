@@ -1,12 +1,11 @@
-import { supabase } from '@/lib/supabase'
+import { getServerSupabase } from '@/lib/supabase-server'
 import { NextResponse } from 'next/server'
 
-// Valid feedback types
 const VALID_FEEDBACK_TYPES = ['saved', 'dismissed', 'acted', 'not_relevant'] as const
 type FeedbackType = typeof VALID_FEEDBACK_TYPES[number]
 
-// POST /api/feedback - Record user feedback on an opportunity
 export async function POST(request: Request) {
+  const supabase = getServerSupabase()
   const body = await request.json()
   const { user_id, opportunity_id, snapshot_id, feedback_type, note } = body
 
@@ -75,6 +74,7 @@ export async function POST(request: Request) {
 
 // GET /api/feedback?user_id=xxx - Get user's feedback history
 export async function GET(request: Request) {
+  const supabase = getServerSupabase()
   const { searchParams } = new URL(request.url)
   const userId = searchParams.get('user_id')
   const feedbackType = searchParams.get('feedback_type')
@@ -122,6 +122,7 @@ export async function GET(request: Request) {
 
 // DELETE /api/feedback?user_id=xxx&opportunity_id=xxx - Remove feedback
 export async function DELETE(request: Request) {
+  const supabase = getServerSupabase()
   const { searchParams } = new URL(request.url)
   const userId = searchParams.get('user_id')
   const opportunityId = searchParams.get('opportunity_id')

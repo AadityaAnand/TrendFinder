@@ -1,13 +1,9 @@
-import { supabase } from '@/lib/supabase'
+import { getServerSupabase, getLatestSnapshot } from '@/lib/supabase-server'
 import { NextResponse } from 'next/server'
 
 export async function GET() {
-  const { data: snapshot } = await supabase
-    .from('trend_snapshots')
-    .select('id')
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .single()
+  const supabase = getServerSupabase()
+  const snapshot = await getLatestSnapshot(supabase)
 
   if (!snapshot) {
     return NextResponse.json({ watching: [] })
@@ -86,6 +82,7 @@ export async function GET() {
         stage_confidence: lifecycle?.stage_confidence || 0,
         comparable: lifecycle?.acceleration_comparable || false,
         signal_count: item.signal_count,
+        momentum_score: item.momentum_score,
         reasons,
       }
     })

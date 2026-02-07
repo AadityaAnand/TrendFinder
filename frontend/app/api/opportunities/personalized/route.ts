@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase'
+import { getServerSupabase, getLatestSnapshot } from '@/lib/supabase-server'
 import { NextResponse } from 'next/server'
 
 // Relevance scoring weights (mirrors Python relevance_scorer.py)
@@ -263,6 +263,7 @@ function computeOutcomeModifier(outcomeStats: Record<string, unknown> | null): O
 
 // GET /api/opportunities/personalized?user_id=xxx
 export async function GET(request: Request) {
+  const supabase = getServerSupabase()
   const { searchParams } = new URL(request.url)
   const userId = searchParams.get('user_id')
   const limit = parseInt(searchParams.get('limit') || '20', 10)
@@ -275,7 +276,6 @@ export async function GET(request: Request) {
     )
   }
 
-  // Get user preferences
   const { data: preferences, error: prefError } = await supabase
     .from('user_preferences')
     .select('*')
@@ -289,13 +289,7 @@ export async function GET(request: Request) {
     )
   }
 
-  // Get latest snapshot
-  const { data: snapshot } = await supabase
-    .from('trend_snapshots')
-    .select('id')
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .single()
+  const snapshot = await getLatestSnapshot(supabase)
 
   if (!snapshot) {
     return NextResponse.json(

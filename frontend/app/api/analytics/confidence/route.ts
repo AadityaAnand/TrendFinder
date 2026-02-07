@@ -1,8 +1,9 @@
-import { supabase } from '@/lib/supabase'
+import { getServerSupabase } from '@/lib/supabase-server'
 import { NextResponse } from 'next/server'
 
 // GET /api/analytics/confidence - Get calibration metrics and predictions
 export async function GET(request: Request) {
+  const supabase = getServerSupabase()
   const { searchParams } = new URL(request.url)
   const entityType = searchParams.get('entity_type')
   const entityId = searchParams.get('entity_id')
@@ -98,6 +99,7 @@ export async function GET(request: Request) {
 
 // POST /api/analytics/confidence - Resolve a prediction
 export async function POST(request: Request) {
+  const supabase = getServerSupabase()
   try {
     const body = await request.json()
     const { prediction_id, actual_outcome, actual_value, note } = body

@@ -1,8 +1,8 @@
-import { supabase } from '@/lib/supabase'
+import { getServerSupabase } from '@/lib/supabase-server'
 import { NextResponse } from 'next/server'
 
-// GET /api/profile?external_id=xxx or ?user_id=xxx - Get user profile
 export async function GET(request: Request) {
+  const supabase = getServerSupabase()
   const { searchParams } = new URL(request.url)
   const externalId = searchParams.get('external_id')
   const userId = searchParams.get('user_id')
@@ -47,8 +47,8 @@ export async function GET(request: Request) {
   })
 }
 
-// POST /api/profile - Create new user profile
 export async function POST(request: Request) {
+  const supabase = getServerSupabase()
   const body = await request.json()
   const { external_id, display_name } = body
 
@@ -59,7 +59,6 @@ export async function POST(request: Request) {
     )
   }
 
-  // Check if profile already exists
   const { data: existing } = await supabase
     .from('user_profiles')
     .select('id')
@@ -73,7 +72,6 @@ export async function POST(request: Request) {
     )
   }
 
-  // Create profile
   const { data: profile, error } = await supabase
     .from('user_profiles')
     .insert({
@@ -90,7 +88,6 @@ export async function POST(request: Request) {
     )
   }
 
-  // Create default preferences
   const { error: prefError } = await supabase
     .from('user_preferences')
     .insert({

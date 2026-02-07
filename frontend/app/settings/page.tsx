@@ -147,7 +147,7 @@ export default function SettingsPage() {
   useEffect(() => {
     if (!ready) return
     if (!isLoggedIn) {
-      router.replace('/')
+      router.replace('/sign-in')
       return
     }
     setIsOnboarding(!hasPrefs)

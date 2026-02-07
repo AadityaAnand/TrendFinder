@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase'
+import { getServerSupabase } from '@/lib/supabase-server'
 import { NextResponse } from 'next/server'
 
 // Valid outcome types
@@ -17,6 +17,7 @@ const VALID_DROP_OFF_STAGES = ['explored', 'started', 'midway', 'near_complete']
 
 // POST /api/outcomes - Record an opportunity outcome
 export async function POST(request: Request) {
+  const supabase = getServerSupabase()
   const body = await request.json()
   const {
     user_id,
@@ -119,6 +120,7 @@ export async function POST(request: Request) {
 
 // GET /api/outcomes?user_id=xxx - Get user's outcomes
 export async function GET(request: Request) {
+  const supabase = getServerSupabase()
   const { searchParams } = new URL(request.url)
   const userId = searchParams.get('user_id')
   const outcomeType = searchParams.get('outcome_type')

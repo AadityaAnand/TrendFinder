@@ -1,8 +1,8 @@
-import { supabase } from '@/lib/supabase'
+import { getServerSupabase } from '@/lib/supabase-server'
 import { NextResponse } from 'next/server'
 
-// GET /api/alerts?user_id=xxx - Get alerts for a user
 export async function GET(request: Request) {
+  const supabase = getServerSupabase()
   const { searchParams } = new URL(request.url)
   const userId = searchParams.get('user_id')
   const includeSeen = searchParams.get('include_seen') === 'true'
@@ -67,6 +67,7 @@ export async function GET(request: Request) {
 
 // PATCH /api/alerts - Mark alerts as seen or dismissed
 export async function PATCH(request: Request) {
+  const supabase = getServerSupabase()
   try {
     const body = await request.json()
     const { alert_id, alert_ids, action } = body

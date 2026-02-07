@@ -1,10 +1,9 @@
-import { supabase } from '@/lib/supabase'
+import { getServerSupabase, getLatestSnapshot } from '@/lib/supabase-server'
 import Link from 'next/link'
 import { Badge } from '../components/Badge'
 import { SourceBadge } from '../components/SourceBadge'
-
-const SUPPORTED_SCORING_VERSION = 'norm-p90-decay7d-v1'
-const SUPPORTED_LIFECYCLE_VERSION = 'lifecycle-v1'
+import { DataHealth } from '../components/DataHealth'
+import { Suspense } from 'react'
 
 const STAGE_CONFIG: Record<string, { label: string; variant: 'success' | 'warning' | 'danger' | 'info' | 'muted' }> = {
   emerging: { label: 'Emerging', variant: 'info' },
@@ -35,9 +34,9 @@ const STAGE_FILTERS: { key: string; label: string }[] = [
   { key: 'declining', label: 'Declining' },
 ]
 
-function matchesDomain(theme: string, keywords: string[]): boolean {
+function matchesDomain(theme: string, description: string | null, keywords: string[]): boolean {
   if (keywords.length === 0) return true
-  const lower = theme.toLowerCase()
+  const lower = `${theme} ${description || ''}`.toLowerCase()
   return keywords.some(kw => lower.includes(kw))
 }
 
@@ -47,59 +46,55 @@ interface TrendItem {
   description: string | null
   stage: string | null
   stage_confidence: number
+  momentum_score: number
   signal_count: number
   comparable: boolean
   qualified: boolean
   top_signals: { title: string; source: string }[]
 }
 
-async function getTrends(): Promise<{ trends: TrendItem[]; snapshotTime: string | null }> {
-  const { data: latestSnapshot } = await supabase
-    .from('trend_snapshots')
-    .select('id, run_at')
-    .eq('scoring_version', SUPPORTED_SCORING_VERSION)
-    .order('run_at', { ascending: false })
-    .limit(1)
-    .single()
+async function getTrends(): Promise<{ trends: TrendItem[]; snapshotTime: string | null; snapshotVersion: string | null }> {
+  const db = getServerSupabase()
+  const snapshot = await getLatestSnapshot(db)
 
-  if (!latestSnapshot) return { trends: [], snapshotTime: null }
+  if (!snapshot) return { trends: [], snapshotTime: null, snapshotVersion: null }
 
-  const { data: allTrends } = await supabase
-    .from('detected_trends')
-    .select('id, theme, description')
-    .order('last_updated', { ascending: false })
+  const { data: snapshotItems } = await db
+    .from('trend_snapshot_items')
+    .select('trend_id, momentum_score, signal_count')
+    .eq('snapshot_id', snapshot.id)
 
-  if (!allTrends || allTrends.length === 0) return { trends: [], snapshotTime: latestSnapshot.run_at }
+  if (!snapshotItems || snapshotItems.length === 0) {
+    return { trends: [], snapshotTime: snapshot.run_at, snapshotVersion: snapshot.scoring_version }
+  }
 
-  const trendIds = allTrends.map(t => t.id)
+  const trendIds = snapshotItems.map(s => s.trend_id)
 
-  const [lifecycleRes, oppRes, snapshotRes, evidenceRes] = await Promise.all([
-    supabase
+  const [trendsRes, lifecycleRes, oppRes, evidenceRes] = await Promise.all([
+    db
+      .from('detected_trends')
+      .select('id, theme, description')
+      .in('id', trendIds),
+    db
       .from('trend_lifecycle_history')
       .select('trend_id, lifecycle_stage, stage_confidence, current_signals, acceleration_comparable')
-      .eq('snapshot_id', latestSnapshot.id)
-      .eq('lifecycle_version', SUPPORTED_LIFECYCLE_VERSION)
+      .eq('snapshot_id', snapshot.id)
       .in('trend_id', trendIds),
-    supabase
+    db
       .from('trend_opportunities')
       .select('trend_id, qualified')
-      .eq('snapshot_id', latestSnapshot.id)
+      .eq('snapshot_id', snapshot.id)
       .in('trend_id', trendIds),
-    supabase
-      .from('trend_snapshot_items')
-      .select('trend_id, signal_count')
-      .eq('snapshot_id', latestSnapshot.id)
-      .in('trend_id', trendIds),
-    supabase
+    db
       .from('trend_signals')
       .select('trend_id, raw_signals!inner(title, source, score)')
-      .eq('snapshot_id', latestSnapshot.id)
+      .eq('snapshot_id', snapshot.id)
       .in('trend_id', trendIds),
   ])
 
-  const lifecycleMap = new Map(lifecycleRes.data?.map(l => [l.trend_id, l]) || [])
-  const oppMap = new Map(oppRes.data?.map(o => [o.trend_id, { qualified: o.qualified }]) || [])
-  const snapshotMap = new Map(snapshotRes.data?.map(s => [s.trend_id, s]) || [])
+  const trendMap = new Map((trendsRes.data || []).map(t => [t.id, t]))
+  const lifecycleMap = new Map((lifecycleRes.data || []).map(l => [l.trend_id, l]))
+  const oppMap = new Map((oppRes.data || []).map(o => [o.trend_id, { qualified: o.qualified }]))
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const evidenceRows = (evidenceRes.data || []) as any[]
@@ -114,56 +109,56 @@ async function getTrends(): Promise<{ trends: TrendItem[]; snapshotTime: string 
     evidenceMap.set(tid, sigs.slice(0, 3))
   }
 
-  const trends: TrendItem[] = allTrends.map(t => {
-    const lifecycle = lifecycleMap.get(t.id)
-    const opp = oppMap.get(t.id)
-    const snapshot = snapshotMap.get(t.id)
+  const trends: TrendItem[] = snapshotItems
+    .map(item => {
+      const trend = trendMap.get(item.trend_id)
+      if (!trend) return null
+      const lifecycle = lifecycleMap.get(item.trend_id)
+      const opp = oppMap.get(item.trend_id)
 
-    return {
-      trend_id: t.id,
-      theme: t.theme,
-      description: t.description || null,
-      stage: lifecycle?.lifecycle_stage || null,
-      stage_confidence: lifecycle?.stage_confidence || 0,
-      signal_count: lifecycle?.current_signals || snapshot?.signal_count || 0,
-      comparable: lifecycle?.acceleration_comparable || false,
-      qualified: opp?.qualified || false,
-      top_signals: evidenceMap.get(t.id) || [],
-    }
-  })
+      return {
+        trend_id: item.trend_id,
+        theme: trend.theme,
+        description: trend.description || null,
+        stage: lifecycle?.lifecycle_stage || null,
+        stage_confidence: lifecycle?.stage_confidence || 0,
+        momentum_score: item.momentum_score || 0,
+        signal_count: lifecycle?.current_signals || item.signal_count || 0,
+        comparable: lifecycle?.acceleration_comparable || false,
+        qualified: opp?.qualified || false,
+        top_signals: evidenceMap.get(item.trend_id) || [],
+      }
+    })
+    .filter((t): t is TrendItem => t !== null && t.signal_count > 0)
 
-  const filtered = trends.filter(t => t.signal_count > 0)
-
-  filtered.sort((a, b) => {
+  trends.sort((a, b) => {
     if (a.qualified !== b.qualified) return a.qualified ? -1 : 1
-    return b.signal_count - a.signal_count
+    return b.momentum_score - a.momentum_score
   })
 
-  return { trends: filtered, snapshotTime: latestSnapshot.run_at }
+  return { trends, snapshotTime: snapshot.run_at, snapshotVersion: snapshot.scoring_version }
 }
 
 export default async function ExplorePage({
   searchParams,
 }: {
-  searchParams: Promise<{ domain?: string; stage?: string; q?: string }>
+  searchParams: Promise<{ domain?: string; stage?: string; q?: string; debug?: string }>
 }) {
   const { domain: activeDomain, stage: activeStage, q: searchQuery } = await searchParams
   const selectedDomain = activeDomain || 'all'
   const selectedStage = activeStage || 'all'
   const query = searchQuery?.trim().toLowerCase() || ''
-  const { trends, snapshotTime } = await getTrends()
+  const { trends, snapshotTime, snapshotVersion } = await getTrends()
 
   const domainConfig = DOMAIN_CATEGORIES.find(d => d.key === selectedDomain)
   let filteredTrends = domainConfig
-    ? trends.filter(t => matchesDomain(t.theme, domainConfig.keywords))
+    ? trends.filter(t => matchesDomain(t.theme, t.description, domainConfig.keywords))
     : trends
 
-  // Apply stage filter
   if (selectedStage !== 'all') {
     filteredTrends = filteredTrends.filter(t => t.stage === selectedStage && t.comparable && t.stage_confidence >= 0.5)
   }
 
-  // Apply search query
   if (query) {
     filteredTrends = filteredTrends.filter(t => {
       const text = `${t.theme} ${t.description || ''}`.toLowerCase()
@@ -171,7 +166,6 @@ export default async function ExplorePage({
     })
   }
 
-  // Build URL helper for filters
   function buildFilterUrl(params: { domain?: string; stage?: string; q?: string }) {
     const parts: string[] = []
     const d = params.domain ?? selectedDomain
@@ -185,20 +179,24 @@ export default async function ExplorePage({
 
   return (
     <div className="min-h-screen bg-white">
+      <Suspense fallback={null}>
+        <DataHealth />
+      </Suspense>
       <div className="max-w-3xl mx-auto px-6 py-10">
         <div className="mb-6">
-          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Market Radar</h1>
+          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Explore</h1>
           <p className="text-sm text-slate-500 mt-1">
             All tracked trends across the developer ecosystem
           </p>
           {snapshotTime && (
             <p className="text-xs text-slate-400 mt-1">
               Last updated {new Date(snapshotTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+              {snapshotVersion ? ` · ${snapshotVersion}` : ''}
+              {` · ${trends.length} trend${trends.length !== 1 ? 's' : ''}`}
             </p>
           )}
         </div>
 
-        {/* Search */}
         <form action="/explore" method="GET" className="mb-4">
           <div className="relative">
             <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -216,13 +214,12 @@ export default async function ExplorePage({
           </div>
         </form>
 
-        {/* Domain filter tabs */}
         <div className="flex items-center gap-1.5 mb-4 overflow-x-auto pb-1">
           {DOMAIN_CATEGORIES.map(cat => {
             const isActive = cat.key === selectedDomain
             const count = cat.key === 'all'
               ? trends.length
-              : trends.filter(t => matchesDomain(t.theme, cat.keywords)).length
+              : trends.filter(t => matchesDomain(t.theme, t.description, cat.keywords)).length
             if (count === 0 && cat.key !== 'all') return null
             return (
               <Link
@@ -243,7 +240,6 @@ export default async function ExplorePage({
           })}
         </div>
 
-        {/* Stage filter */}
         <div className="flex items-center gap-1.5 mb-8 overflow-x-auto pb-1">
           {STAGE_FILTERS.map(sf => {
             const isActive = sf.key === selectedStage
@@ -263,7 +259,6 @@ export default async function ExplorePage({
           })}
         </div>
 
-        {/* Active filters summary */}
         {(query || selectedStage !== 'all') && (
           <div className="flex items-center gap-2 mb-4 text-xs text-slate-500">
             <span>Showing {filteredTrends.length} result{filteredTrends.length !== 1 ? 's' : ''}</span>
@@ -278,14 +273,18 @@ export default async function ExplorePage({
         {filteredTrends.length === 0 ? (
           <div className="border border-slate-200 rounded-xl p-10 text-center">
             <p className="text-sm text-slate-600 mb-2">
-              {query ? `No trends matching "${query}".` : selectedDomain !== 'all' ? 'No trends match this category.' : 'No trends detected yet.'}
+              {trends.length === 0
+                ? 'No trends detected yet.'
+                : query
+                ? `No trends matching "${query}".`
+                : selectedDomain !== 'all'
+                ? 'No trends match this category.'
+                : 'No trends match these filters.'}
             </p>
             <p className="text-xs text-slate-400">
-              {query
-                ? 'Try a different search term or clear filters.'
-                : selectedDomain !== 'all'
-                ? 'Try a different category or view all trends.'
-                : 'Trends appear after the daily pipeline runs.'}
+              {trends.length === 0
+                ? 'Trends appear after the daily pipeline runs. Add ?debug=1 to check data health.'
+                : 'Try a different search term or clear filters.'}
             </p>
           </div>
         ) : (
@@ -297,7 +296,7 @@ export default async function ExplorePage({
               return (
                 <div key={trend.trend_id} className="border border-slate-200 rounded-xl p-5 hover:border-slate-300 transition">
                   <div className="flex items-start justify-between gap-3">
-                    <div>
+                    <div className="min-w-0">
                       <Link
                         href={`/trends/${trend.trend_id}`}
                         className="text-base font-semibold text-slate-900 hover:text-emerald-600 transition"
@@ -305,7 +304,7 @@ export default async function ExplorePage({
                         {trend.theme}
                       </Link>
                       {trend.description && (
-                        <p className="text-sm text-slate-500 mt-0.5 leading-relaxed">{trend.description}</p>
+                        <p className="text-sm text-slate-500 mt-0.5 leading-relaxed line-clamp-2">{trend.description}</p>
                       )}
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
@@ -318,13 +317,14 @@ export default async function ExplorePage({
                       {showStage ? (
                         <Badge variant={stageConfig.variant}>{stageConfig.label}</Badge>
                       ) : (
-                        <span className="text-xs text-slate-400">Collecting data</span>
+                        <span className="text-xs text-slate-400">Gathering data</span>
                       )}
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-3 mt-2 text-xs text-slate-400">
+                  <div className="flex items-center gap-4 mt-2.5 text-xs text-slate-400">
                     <span>{trend.signal_count} signal{trend.signal_count !== 1 ? 's' : ''}</span>
+                    <span>Momentum: {(trend.momentum_score * 100).toFixed(0)}%</span>
                   </div>
 
                   {trend.top_signals.length > 0 && (

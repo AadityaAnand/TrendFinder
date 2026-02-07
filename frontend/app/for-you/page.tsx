@@ -1,11 +1,12 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useState, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
 import { Badge } from '../components/Badge'
 import { ConfidenceBadge } from '../components/ConfidenceBadge'
+import { DataHealth } from '../components/DataHealth'
 
 const TIMING_CONFIG: Record<string, { text: string; variant: 'success' | 'warning' | 'danger' | 'info' | 'muted'; description: string }> = {
   too_early: { text: 'Too Early', variant: 'info', description: 'Not enough data to act yet' },
@@ -73,21 +74,24 @@ interface WatchingTrend {
   stage_confidence: number
   comparable: boolean
   signal_count: number
+  momentum_score?: number
   reasons: string[]
 }
 
-export default function ForYouPage() {
+function ForYouContent() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { profileId, hasPrefs, ready, isLoggedIn } = useAuth()
   const [opportunities, setOpportunities] = useState<Opportunity[]>([])
   const [watching, setWatching] = useState<WatchingTrend[]>([])
   const [loading, setLoading] = useState(true)
   const [hasQualified, setHasQualified] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!ready) return
     if (!isLoggedIn) {
-      router.replace('/')
+      router.replace('/sign-in')
       return
     }
     if (!hasPrefs) {
@@ -102,8 +106,8 @@ export default function ForYouPage() {
   const loadData = async (pid: string) => {
     try {
       setLoading(true)
+      setLoadError(null)
 
-      // First try qualified opportunities
       const [oppRes, watchRes] = await Promise.all([
         fetch(`/api/opportunities/personalized?user_id=${pid}&limit=20`),
         fetch('/api/trends/watching'),
@@ -119,7 +123,6 @@ export default function ForYouPage() {
         setHasQualified(true)
         setOpportunities(opps)
       } else {
-        // Fallback: fetch all opportunities including unqualified
         setHasQualified(false)
         const fallbackRes = await fetch(`/api/opportunities/personalized?user_id=${pid}&limit=10&include_unqualified=true`)
         if (fallbackRes.ok) {
@@ -132,8 +135,8 @@ export default function ForYouPage() {
         const data = await watchRes.json()
         setWatching(data.watching || [])
       }
-    } catch {
-      /* empty */
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : 'Failed to load data')
     } finally {
       setLoading(false)
     }
@@ -168,24 +171,35 @@ export default function ForYouPage() {
   }
 
   const noDataAtAll = opportunities.length === 0 && watching.length === 0
+  const debug = searchParams.get('debug') === '1'
 
   return (
     <div className="min-h-screen bg-white">
+      {debug && (
+        <Suspense fallback={null}>
+          <DataHealth />
+        </Suspense>
+      )}
       <div className="max-w-3xl mx-auto px-6 py-10">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-slate-900 tracking-tight">For You</h1>
           <p className="text-sm text-slate-500 mt-1">Opportunities matched to your profile</p>
         </div>
 
+        {loadError && (
+          <div className="mb-6 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+            {loadError}
+          </div>
+        )}
+
         {noDataAtAll ? (
           <div className="border border-slate-200 rounded-xl p-10 text-center mb-12">
             <h2 className="text-lg font-semibold text-slate-900 mb-2">No data yet</h2>
             <p className="text-sm text-slate-500 max-w-md mx-auto mb-2">
               The pipeline hasn&apos;t run yet or hasn&apos;t collected enough signals to generate opportunities.
-              Trends appear after the daily pipeline scrapes HN, GitHub, Dev.to, and Reddit.
             </p>
             <p className="text-sm text-slate-400 mb-6">
-              Check back after the next pipeline run.
+              Check back after the next pipeline run, or browse existing trends.
             </p>
             <Link
               href="/explore"
@@ -202,7 +216,7 @@ export default function ForYouPage() {
               that have don&apos;t match your preferences.
             </p>
             <p className="text-sm text-slate-400 mb-6">
-              The pipeline runs daily and collects more evidence over time. Check back tomorrow.
+              The pipeline runs daily and collects more evidence over time.
             </p>
             <div className="flex items-center justify-center gap-3">
               <Link
@@ -340,9 +354,12 @@ export default function ForYouPage() {
                           <p className="text-xs text-slate-400 mt-0.5">{trend.description}</p>
                         )}
                       </div>
-                      {showStage && (
-                        <Badge variant={stageConfig.variant}>{stageConfig.label}</Badge>
-                      )}
+                      <div className="flex items-center gap-2 shrink-0">
+                        {showStage && (
+                          <Badge variant={stageConfig.variant}>{stageConfig.label}</Badge>
+                        )}
+                        <span className="text-xs text-slate-400">{trend.signal_count} signals</span>
+                      </div>
                     </div>
                     <div className="mt-2">
                       {trend.reasons.map((reason, i) => (
@@ -357,5 +374,17 @@ export default function ForYouPage() {
         )}
       </div>
     </div>
+  )
+}
+
+export default function ForYouPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="w-5 h-5 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" />
+      </div>
+    }>
+      <ForYouContent />
+    </Suspense>
   )
 }

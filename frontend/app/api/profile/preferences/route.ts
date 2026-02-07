@@ -1,8 +1,8 @@
-import { supabase } from '@/lib/supabase'
+import { getServerSupabase } from '@/lib/supabase-server'
 import { NextResponse } from 'next/server'
 
-// GET /api/profile/preferences?user_id=xxx - Get user preferences
 export async function GET(request: Request) {
+  const supabase = getServerSupabase()
   const { searchParams } = new URL(request.url)
   const userId = searchParams.get('user_id')
 
@@ -29,8 +29,8 @@ export async function GET(request: Request) {
   return NextResponse.json(preferences)
 }
 
-// PUT /api/profile/preferences - Update user preferences
 export async function PUT(request: Request) {
+  const supabase = getServerSupabase()
   const body = await request.json()
   const {
     user_id,
@@ -50,7 +50,6 @@ export async function PUT(request: Request) {
     )
   }
 
-  // Get current preferences for version tracking
   const { data: current } = await supabase
     .from('user_preferences')
     .select('*')
@@ -66,7 +65,6 @@ export async function PUT(request: Request) {
 
   const newVersion = (current.preference_version || 1) + 1
 
-  // Save current preferences to history before updating
   await supabase
     .from('user_preference_history')
     .insert({
@@ -83,7 +81,6 @@ export async function PUT(request: Request) {
       }
     })
 
-  // Build update object with only provided fields
   const updateData: Record<string, unknown> = {
     preference_version: newVersion,
     updated_at: new Date().toISOString()
@@ -97,7 +94,6 @@ export async function PUT(request: Request) {
   if (risk_tolerance !== undefined) updateData.risk_tolerance = risk_tolerance
   if (avoid_topics !== undefined) updateData.avoid_topics = avoid_topics
 
-  // Update preferences
   const { data: updated, error } = await supabase
     .from('user_preferences')
     .update(updateData)

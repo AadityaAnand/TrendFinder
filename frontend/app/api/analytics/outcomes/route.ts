@@ -1,8 +1,9 @@
-import { supabase } from '@/lib/supabase'
+import { getServerSupabase } from '@/lib/supabase-server'
 import { NextResponse } from 'next/server'
 
 // GET /api/analytics/outcomes - Get outcome intelligence data
 export async function GET(request: Request) {
+  const supabase = getServerSupabase()
   const { searchParams } = new URL(request.url)
   const trendId = searchParams.get('trend_id')
   const opportunityId = searchParams.get('opportunity_id')
