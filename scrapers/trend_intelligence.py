@@ -28,9 +28,8 @@ def get_latest_snapshot() -> Optional[dict]:
         .select('id, run_at') \
         .order('run_at', desc=True) \
         .limit(1) \
-        .single() \
         .execute()
-    return response.data
+    return response.data[0] if response.data else None
 
 
 def get_snapshot_trends(snapshot_id: str) -> list[dict]:
@@ -95,9 +94,9 @@ def get_lifecycle_context(snapshot_id: str, trend_id: str) -> Optional[dict]:
         .select('lifecycle_stage, stage_confidence, acceleration_comparable, momentum_change_pct, snapshots_seen') \
         .eq('snapshot_id', snapshot_id) \
         .eq('trend_id', trend_id) \
-        .single() \
+        .limit(1) \
         .execute()
-    return response.data
+    return response.data[0] if response.data else None
 
 
 def compute_evidence_hash(evidence: list[dict]) -> str:
@@ -111,9 +110,9 @@ def get_existing_intelligence(snapshot_id: str, trend_id: str) -> Optional[dict]
         .select('evidence_hash') \
         .eq('snapshot_id', snapshot_id) \
         .eq('trend_id', trend_id) \
-        .single() \
+        .limit(1) \
         .execute()
-    return response.data if response.data else None
+    return response.data[0] if response.data else None
 
 
 def generate_intelligence(trend_name: str, evidence: list[dict], lifecycle: Optional[dict]) -> dict:
