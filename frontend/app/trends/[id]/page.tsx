@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase'
+import { getServerSupabase, getLatestSnapshot, getTrendDisplayName } from '@/lib/supabase-server'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { SourceBadge } from '../../components/SourceBadge'
@@ -43,7 +43,6 @@ interface OpportunityData {
 interface TrendData {
   id: string
   theme: string
-  description: string | null
   status: string
   first_seen: string
   trajectory: TrajectoryPoint[]
@@ -59,13 +58,17 @@ interface TrendData {
 }
 
 async function getTrendData(id: string): Promise<TrendData | null> {
+  const supabase = getServerSupabase()
+
   const { data: trend } = await supabase
     .from('detected_trends')
-    .select('id, theme, description, status, first_seen')
+    .select('id, theme, status, first_seen')
     .eq('id', id)
     .single()
 
   if (!trend) return null
+
+  const displayName = getTrendDisplayName(trend.theme, null, id)
 
   const { data: trajectoryRow } = await supabase
     .from('trend_trajectories')
@@ -140,25 +143,31 @@ async function getTrendData(id: string): Promise<TrendData | null> {
   }
 
   let opportunity: OpportunityData | null = null
-  const { data: latestSnapshot } = await supabase
-    .from('trend_snapshots')
-    .select('id')
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .single()
+  const snapshot = await getLatestSnapshot(supabase)
 
-  if (latestSnapshot) {
+  if (snapshot) {
     const { data: oppRow } = await supabase
       .from('trend_opportunities')
-      .select('action_title, why_now, suggested_actions, qualified')
+      .select('suggested_actions, qualified')
       .eq('trend_id', id)
-      .eq('snapshot_id', latestSnapshot.id)
+      .eq('snapshot_id', snapshot.id)
       .single()
+
+    let why_now: string | null = null
+    if (oppRow) {
+      const { data: explRow } = await supabase
+        .from('opportunity_explanations')
+        .select('why_now, why_this_trend')
+        .eq('snapshot_id', snapshot.id)
+        .limit(1)
+        .single()
+      why_now = explRow?.why_now || null
+    }
 
     if (oppRow) {
       opportunity = {
-        action_title: oppRow.action_title,
-        why_now: oppRow.why_now || null,
+        action_title: displayName,
+        why_now,
         suggested_actions: oppRow.suggested_actions || null,
         qualified: oppRow.qualified || false,
       }
@@ -166,8 +175,10 @@ async function getTrendData(id: string): Promise<TrendData | null> {
   }
 
   return {
-    ...trend,
-    description: trend.description || null,
+    id: trend.id,
+    theme: displayName,
+    status: trend.status,
+    first_seen: trend.first_seen,
     trajectory,
     peak_momentum,
     peak_momentum_at,
@@ -392,9 +403,6 @@ export default async function TrendDetailPage({
   const isSingleSnapshot = trend.total_snapshots <= 1
 
   const narrativeParts: string[] = []
-  if (trend.description) {
-    narrativeParts.push(trend.description)
-  }
   if (stageConfig && trend.current_stage) {
     narrativeParts.push(`This trend is currently in the ${stageConfig.label.toLowerCase()} phase.`)
   }

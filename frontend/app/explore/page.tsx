@@ -1,9 +1,7 @@
-import { getServerSupabase, getLatestSnapshot } from '@/lib/supabase-server'
+import { getServerSupabase, getLatestSnapshot, getTrendDisplayName } from '@/lib/supabase-server'
 import Link from 'next/link'
 import { Badge } from '../components/Badge'
 import { SourceBadge } from '../components/SourceBadge'
-import { DataHealth } from '../components/DataHealth'
-import { Suspense } from 'react'
 
 const STAGE_CONFIG: Record<string, { label: string; variant: 'success' | 'warning' | 'danger' | 'info' | 'muted' }> = {
   emerging: { label: 'Emerging', variant: 'info' },
@@ -34,23 +32,22 @@ const STAGE_FILTERS: { key: string; label: string }[] = [
   { key: 'declining', label: 'Declining' },
 ]
 
-function matchesDomain(theme: string, description: string | null, keywords: string[]): boolean {
+function matchesDomain(name: string, keywords: string[]): boolean {
   if (keywords.length === 0) return true
-  const lower = `${theme} ${description || ''}`.toLowerCase()
+  const lower = name.toLowerCase()
   return keywords.some(kw => lower.includes(kw))
 }
 
 interface TrendItem {
   trend_id: string
-  theme: string
-  description: string | null
+  display_name: string
   stage: string | null
   stage_confidence: number
   momentum_score: number
   signal_count: number
   comparable: boolean
   qualified: boolean
-  top_signals: { title: string; source: string }[]
+  top_signals: { title: string; source: string; url: string | null }[]
 }
 
 async function getTrends(): Promise<{ trends: TrendItem[]; snapshotTime: string | null; snapshotVersion: string | null }> {
@@ -59,12 +56,12 @@ async function getTrends(): Promise<{ trends: TrendItem[]; snapshotTime: string 
 
   if (!snapshot) return { trends: [], snapshotTime: null, snapshotVersion: null }
 
-  const { data: snapshotItems } = await db
+  const { data: snapshotItems, error: itemsError } = await db
     .from('trend_snapshot_items')
-    .select('trend_id, momentum_score, signal_count')
+    .select('trend_id, momentum_score, signal_count, trend_keyword')
     .eq('snapshot_id', snapshot.id)
 
-  if (!snapshotItems || snapshotItems.length === 0) {
+  if (itemsError || !snapshotItems || snapshotItems.length === 0) {
     return { trends: [], snapshotTime: snapshot.run_at, snapshotVersion: snapshot.scoring_version }
   }
 
@@ -73,7 +70,7 @@ async function getTrends(): Promise<{ trends: TrendItem[]; snapshotTime: string 
   const [trendsRes, lifecycleRes, oppRes, evidenceRes] = await Promise.all([
     db
       .from('detected_trends')
-      .select('id, theme, description')
+      .select('id, theme')
       .in('id', trendIds),
     db
       .from('trend_lifecycle_history')
@@ -87,7 +84,7 @@ async function getTrends(): Promise<{ trends: TrendItem[]; snapshotTime: string 
       .in('trend_id', trendIds),
     db
       .from('trend_signals')
-      .select('trend_id, raw_signals!inner(title, source, score)')
+      .select('trend_id, raw_signals!inner(title, source, url, score)')
       .eq('snapshot_id', snapshot.id)
       .in('trend_id', trendIds),
   ])
@@ -98,28 +95,29 @@ async function getTrends(): Promise<{ trends: TrendItem[]; snapshotTime: string 
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const evidenceRows = (evidenceRes.data || []) as any[]
-  const evidenceMap = new Map<string, { title: string; source: string }[]>()
+  const evidenceMap = new Map<string, { title: string; source: string; url: string | null }[]>()
   for (const row of evidenceRows) {
     const sig = row.raw_signals
     if (!sig) continue
     if (!evidenceMap.has(row.trend_id)) evidenceMap.set(row.trend_id, [])
-    evidenceMap.get(row.trend_id)!.push({ title: sig.title, source: sig.source })
+    evidenceMap.get(row.trend_id)!.push({ title: sig.title, source: sig.source, url: sig.url || null })
   }
   for (const [tid, sigs] of evidenceMap) {
-    evidenceMap.set(tid, sigs.slice(0, 3))
+    evidenceMap.set(tid, sigs.slice(0, 5))
   }
+
+  const keywordMap = new Map(snapshotItems.map(s => [s.trend_id, s.trend_keyword]))
 
   const trends: TrendItem[] = snapshotItems
     .map(item => {
       const trend = trendMap.get(item.trend_id)
-      if (!trend) return null
       const lifecycle = lifecycleMap.get(item.trend_id)
       const opp = oppMap.get(item.trend_id)
+      const displayName = getTrendDisplayName(trend?.theme, keywordMap.get(item.trend_id), item.trend_id)
 
       return {
         trend_id: item.trend_id,
-        theme: trend.theme,
-        description: trend.description || null,
+        display_name: displayName,
         stage: lifecycle?.lifecycle_stage || null,
         stage_confidence: lifecycle?.stage_confidence || 0,
         momentum_score: item.momentum_score || 0,
@@ -129,7 +127,7 @@ async function getTrends(): Promise<{ trends: TrendItem[]; snapshotTime: string 
         top_signals: evidenceMap.get(item.trend_id) || [],
       }
     })
-    .filter((t): t is TrendItem => t !== null && t.signal_count > 0)
+    .filter((t): t is TrendItem => t !== null)
 
   trends.sort((a, b) => {
     if (a.qualified !== b.qualified) return a.qualified ? -1 : 1
@@ -142,17 +140,21 @@ async function getTrends(): Promise<{ trends: TrendItem[]; snapshotTime: string 
 export default async function ExplorePage({
   searchParams,
 }: {
-  searchParams: Promise<{ domain?: string; stage?: string; q?: string; debug?: string }>
+  searchParams: Promise<{ domain?: string; stage?: string; q?: string; show_empty?: string }>
 }) {
-  const { domain: activeDomain, stage: activeStage, q: searchQuery } = await searchParams
-  const selectedDomain = activeDomain || 'all'
-  const selectedStage = activeStage || 'all'
-  const query = searchQuery?.trim().toLowerCase() || ''
-  const { trends, snapshotTime, snapshotVersion } = await getTrends()
+  const params = await searchParams
+  const selectedDomain = params.domain || 'all'
+  const selectedStage = params.stage || 'all'
+  const query = params.q?.trim().toLowerCase() || ''
+  const showEmpty = params.show_empty === '1'
+  const { trends: allTrends, snapshotTime, snapshotVersion } = await getTrends()
+
+  const trends = showEmpty ? allTrends : allTrends.filter(t => t.signal_count > 0 || t.top_signals.length > 0)
+  const hiddenCount = allTrends.length - trends.length
 
   const domainConfig = DOMAIN_CATEGORIES.find(d => d.key === selectedDomain)
   let filteredTrends = domainConfig
-    ? trends.filter(t => matchesDomain(t.theme, t.description, domainConfig.keywords))
+    ? trends.filter(t => matchesDomain(t.display_name, domainConfig.keywords))
     : trends
 
   if (selectedStage !== 'all') {
@@ -160,39 +162,34 @@ export default async function ExplorePage({
   }
 
   if (query) {
-    filteredTrends = filteredTrends.filter(t => {
-      const text = `${t.theme} ${t.description || ''}`.toLowerCase()
-      return text.includes(query)
-    })
+    filteredTrends = filteredTrends.filter(t => t.display_name.toLowerCase().includes(query))
   }
 
-  function buildFilterUrl(params: { domain?: string; stage?: string; q?: string }) {
+  function buildFilterUrl(params: { domain?: string; stage?: string; q?: string; show_empty?: string }) {
     const parts: string[] = []
     const d = params.domain ?? selectedDomain
     const s = params.stage ?? selectedStage
     const search = params.q ?? query
+    const se = params.show_empty ?? (showEmpty ? '1' : '')
     if (d && d !== 'all') parts.push(`domain=${d}`)
     if (s && s !== 'all') parts.push(`stage=${s}`)
     if (search) parts.push(`q=${encodeURIComponent(search)}`)
+    if (se === '1') parts.push('show_empty=1')
     return parts.length > 0 ? `/explore?${parts.join('&')}` : '/explore'
   }
 
   return (
     <div className="min-h-screen bg-white">
-      <Suspense fallback={null}>
-        <DataHealth />
-      </Suspense>
       <div className="max-w-3xl mx-auto px-6 py-10">
         <div className="mb-6">
-          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Explore</h1>
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Explore</h1>
           <p className="text-sm text-slate-500 mt-1">
-            All tracked trends across the developer ecosystem
+            {trends.length} trend{trends.length !== 1 ? 's' : ''} tracked across the developer ecosystem
           </p>
           {snapshotTime && (
-            <p className="text-xs text-slate-400 mt-1">
+            <p className="text-xs text-slate-400 mt-0.5">
               Last updated {new Date(snapshotTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
               {snapshotVersion ? ` · ${snapshotVersion}` : ''}
-              {` · ${trends.length} trend${trends.length !== 1 ? 's' : ''}`}
             </p>
           )}
         </div>
@@ -211,28 +208,29 @@ export default async function ExplorePage({
             />
             {selectedDomain !== 'all' && <input type="hidden" name="domain" value={selectedDomain} />}
             {selectedStage !== 'all' && <input type="hidden" name="stage" value={selectedStage} />}
+            {showEmpty && <input type="hidden" name="show_empty" value="1" />}
           </div>
         </form>
 
-        <div className="flex items-center gap-1.5 mb-4 overflow-x-auto pb-1">
+        <div className="flex items-center gap-1.5 mb-3 overflow-x-auto pb-1">
           {DOMAIN_CATEGORIES.map(cat => {
             const isActive = cat.key === selectedDomain
             const count = cat.key === 'all'
               ? trends.length
-              : trends.filter(t => matchesDomain(t.theme, t.description, cat.keywords)).length
+              : trends.filter(t => matchesDomain(t.display_name, cat.keywords)).length
             if (count === 0 && cat.key !== 'all') return null
             return (
               <Link
                 key={cat.key}
                 href={buildFilterUrl({ domain: cat.key })}
-                className={`shrink-0 px-3.5 py-1.5 rounded-lg text-sm font-medium transition border ${
+                className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition border ${
                   isActive
                     ? 'bg-slate-900 text-white border-slate-900'
                     : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-50'
                 }`}
               >
                 {cat.label}
-                <span className={`ml-1.5 text-xs ${isActive ? 'text-slate-400' : 'text-slate-400'}`}>
+                <span className={`ml-1 text-[10px] ${isActive ? 'text-slate-400' : 'text-slate-400'}`}>
                   {count}
                 </span>
               </Link>
@@ -240,14 +238,14 @@ export default async function ExplorePage({
           })}
         </div>
 
-        <div className="flex items-center gap-1.5 mb-8 overflow-x-auto pb-1">
+        <div className="flex items-center gap-1.5 mb-6 overflow-x-auto pb-1">
           {STAGE_FILTERS.map(sf => {
             const isActive = sf.key === selectedStage
             return (
               <Link
                 key={sf.key}
                 href={buildFilterUrl({ stage: sf.key })}
-                className={`shrink-0 px-3 py-1 rounded-md text-xs font-medium transition border ${
+                className={`shrink-0 px-2.5 py-1 rounded-md text-[11px] font-medium transition border ${
                   isActive
                     ? 'bg-slate-700 text-white border-slate-700'
                     : 'bg-white text-slate-500 border-slate-150 hover:border-slate-300 hover:bg-slate-50'
@@ -261,11 +259,29 @@ export default async function ExplorePage({
 
         {(query || selectedStage !== 'all') && (
           <div className="flex items-center gap-2 mb-4 text-xs text-slate-500">
-            <span>Showing {filteredTrends.length} result{filteredTrends.length !== 1 ? 's' : ''}</span>
-            {query && <span className="bg-slate-100 px-2 py-0.5 rounded">Search: &quot;{query}&quot;</span>}
-            {selectedStage !== 'all' && <span className="bg-slate-100 px-2 py-0.5 rounded">Stage: {selectedStage}</span>}
+            <span>{filteredTrends.length} result{filteredTrends.length !== 1 ? 's' : ''}</span>
+            {query && <span className="bg-slate-100 px-2 py-0.5 rounded">&quot;{query}&quot;</span>}
+            {selectedStage !== 'all' && <span className="bg-slate-100 px-2 py-0.5 rounded">{selectedStage}</span>}
             <Link href={buildFilterUrl({ q: '', stage: 'all', domain: selectedDomain })} className="text-slate-400 hover:text-slate-600 underline">
-              Clear filters
+              Clear
+            </Link>
+          </div>
+        )}
+
+        {hiddenCount > 0 && !showEmpty && (
+          <div className="flex items-center justify-between mb-4 px-3 py-2 bg-slate-50 rounded-lg text-xs text-slate-500">
+            <span>{hiddenCount} trend{hiddenCount !== 1 ? 's' : ''} with no signals hidden</span>
+            <Link href={buildFilterUrl({ show_empty: '1' })} className="text-slate-600 hover:text-slate-900 font-medium underline">
+              Show all
+            </Link>
+          </div>
+        )}
+
+        {showEmpty && hiddenCount > 0 && (
+          <div className="flex items-center justify-between mb-4 px-3 py-2 bg-slate-50 rounded-lg text-xs text-slate-500">
+            <span>Showing all {allTrends.length} trends including {hiddenCount} with no signals</span>
+            <Link href={buildFilterUrl({ show_empty: '' })} className="text-slate-600 hover:text-slate-900 font-medium underline">
+              Hide empty
             </Link>
           </div>
         )}
@@ -273,71 +289,73 @@ export default async function ExplorePage({
         {filteredTrends.length === 0 ? (
           <div className="border border-slate-200 rounded-xl p-10 text-center">
             <p className="text-sm text-slate-600 mb-2">
-              {trends.length === 0
-                ? 'No trends detected yet.'
+              {allTrends.length === 0
+                ? 'No snapshot data yet. Run the pipeline or check your connection.'
                 : query
                 ? `No trends matching "${query}".`
                 : selectedDomain !== 'all'
                 ? 'No trends match this category.'
                 : 'No trends match these filters.'}
             </p>
-            <p className="text-xs text-slate-400">
-              {trends.length === 0
-                ? 'Trends appear after the daily pipeline runs. Add ?debug=1 to check data health.'
-                : 'Try a different search term or clear filters.'}
-            </p>
+            {allTrends.length > 0 && (
+              <p className="text-xs text-slate-400">
+                Try a different search term or clear filters.
+              </p>
+            )}
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-3">
             {filteredTrends.map((trend) => {
               const stageConfig = trend.stage ? STAGE_CONFIG[trend.stage] : null
               const showStage = stageConfig && trend.comparable && trend.stage_confidence >= 0.5
 
               return (
-                <div key={trend.trend_id} className="border border-slate-200 rounded-xl p-5 hover:border-slate-300 transition">
+                <Link
+                  key={trend.trend_id}
+                  href={`/trends/${trend.trend_id}`}
+                  className="block border border-slate-200 rounded-xl p-4 hover:border-slate-300 hover:bg-slate-50/50 transition group"
+                >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <Link
-                        href={`/trends/${trend.trend_id}`}
-                        className="text-base font-semibold text-slate-900 hover:text-emerald-600 transition"
-                      >
-                        {trend.theme}
-                      </Link>
-                      {trend.description && (
-                        <p className="text-sm text-slate-500 mt-0.5 leading-relaxed line-clamp-2">{trend.description}</p>
-                      )}
+                      <h3 className="text-sm font-semibold text-slate-900 group-hover:text-emerald-600 transition">
+                        {trend.display_name}
+                      </h3>
+                      <div className="flex items-center gap-3 mt-1 text-xs text-slate-400">
+                        <span>{trend.signal_count} signal{trend.signal_count !== 1 ? 's' : ''}</span>
+                        {trend.momentum_score > 0 && (
+                          <span>Momentum {(trend.momentum_score * 100).toFixed(0)}%</span>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center gap-1.5 shrink-0">
                       {trend.qualified && (
-                        <span className="flex items-center gap-1">
-                          <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                          <span className="text-xs font-medium text-emerald-600">Qualified</span>
+                        <span className="flex items-center gap-1 text-xs font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                          Qualified
                         </span>
                       )}
                       {showStage ? (
                         <Badge variant={stageConfig.variant}>{stageConfig.label}</Badge>
-                      ) : (
-                        <span className="text-xs text-slate-400">Gathering data</span>
-                      )}
+                      ) : trend.signal_count > 0 ? (
+                        <span className="text-[11px] text-slate-400">Gathering data</span>
+                      ) : null}
                     </div>
-                  </div>
-
-                  <div className="flex items-center gap-4 mt-2.5 text-xs text-slate-400">
-                    <span>{trend.signal_count} signal{trend.signal_count !== 1 ? 's' : ''}</span>
-                    <span>Momentum: {(trend.momentum_score * 100).toFixed(0)}%</span>
                   </div>
 
                   {trend.top_signals.length > 0 && (
-                    <div className="mt-3 space-y-1.5">
-                      {trend.top_signals.map((sig, i) => (
-                        <div key={i} className="flex items-center gap-2">
+                    <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1">
+                      {trend.top_signals.slice(0, 3).map((sig, i) => (
+                        <div key={i} className="flex items-center gap-1.5 min-w-0">
                           <SourceBadge source={sig.source} />
-                          <span className="text-sm text-slate-500 truncate">{sig.title}</span>
+                          <span className="text-xs text-slate-500 truncate max-w-[200px]">{sig.title}</span>
                         </div>
                       ))}
+                      {trend.top_signals.length > 3 && (
+                        <span className="text-xs text-slate-400">+{trend.top_signals.length - 3} more</span>
+                      )}
                     </div>
                   )}
-                </div>
+                </Link>
               )
             })}
           </div>

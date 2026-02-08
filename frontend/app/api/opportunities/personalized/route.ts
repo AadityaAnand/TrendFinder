@@ -1,4 +1,4 @@
-import { getServerSupabase, getLatestSnapshot } from '@/lib/supabase-server'
+import { getServerSupabase, getLatestSnapshot, getTrendDisplayName } from '@/lib/supabase-server'
 import { NextResponse } from 'next/server'
 
 // Relevance scoring weights (mirrors Python relevance_scorer.py)
@@ -298,15 +298,19 @@ export async function GET(request: Request) {
     )
   }
 
-  // Get opportunities with their trends
+  // Get opportunities with their trends and explanations
   let oppQuery = supabase
     .from('trend_opportunities')
     .select(`
       *,
       detected_trends (
         id,
-        theme,
-        description
+        theme
+      ),
+      opportunity_explanations (
+        why_this_trend,
+        why_now,
+        whats_the_risk
       )
     `)
     .eq('snapshot_id', snapshot.id)
@@ -488,8 +492,20 @@ export async function GET(request: Request) {
       // Personalized score: 60% (outcome+competition adjusted) global quality, 40% relevance
       const personalized_score = 0.6 * adjustedGlobalScore + 0.4 * relevance_score
 
+      const trendData = opp.detected_trends || {}
+      const explanations = Array.isArray(opp.opportunity_explanations)
+        ? opp.opportunity_explanations[0]
+        : opp.opportunity_explanations
+      const displayName = getTrendDisplayName(trendData.theme, null, opp.trend_id)
+
       const result: Record<string, unknown> = {
         ...opp,
+        display_name: displayName,
+        action_title: opp.action_title || displayName,
+        why_now: opp.why_now || explanations?.why_now || null,
+        why_this_trend: explanations?.why_this_trend || null,
+        whats_the_risk: explanations?.whats_the_risk || null,
+        detected_trends: { ...trendData, theme: displayName },
         relevance_score,
         relevance_breakdown: breakdown,
         fit_reasons,

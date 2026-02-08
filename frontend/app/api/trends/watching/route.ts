@@ -1,4 +1,4 @@
-import { getServerSupabase, getLatestSnapshot } from '@/lib/supabase-server'
+import { getServerSupabase, getLatestSnapshot, getTrendDisplayName } from '@/lib/supabase-server'
 import { NextResponse } from 'next/server'
 
 export async function GET() {
@@ -11,7 +11,7 @@ export async function GET() {
 
   const { data: snapshotItems } = await supabase
     .from('trend_snapshot_items')
-    .select('trend_id, momentum_score, signal_count')
+    .select('trend_id, momentum_score, signal_count, trend_keyword')
     .eq('snapshot_id', snapshot.id)
     .gte('signal_count', 2)
     .gt('momentum_score', 0)
@@ -24,10 +24,10 @@ export async function GET() {
 
   const trendIds = snapshotItems.map(s => s.trend_id)
 
-  const [trendsRes, oppsRes, lifecycleRes] = await Promise.all([
+  const [trendsRes, oppsRes, lifecycleRes, evidenceRes] = await Promise.all([
     supabase
       .from('detected_trends')
-      .select('id, theme, description')
+      .select('id, theme')
       .in('id', trendIds),
     supabase
       .from('trend_opportunities')
@@ -39,11 +39,29 @@ export async function GET() {
       .select('trend_id, lifecycle_stage, stage_confidence, acceleration_comparable')
       .eq('snapshot_id', snapshot.id)
       .in('trend_id', trendIds),
+    supabase
+      .from('trend_signals')
+      .select('trend_id, raw_signals!inner(title, source, url)')
+      .eq('snapshot_id', snapshot.id)
+      .in('trend_id', trendIds),
   ])
 
   const trendMap = new Map((trendsRes.data || []).map(t => [t.id, t]))
   const oppMap = new Map((oppsRes.data || []).map(o => [o.trend_id, o]))
   const lifecycleMap = new Map((lifecycleRes.data || []).map(l => [l.trend_id, l]))
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const evidenceRows = (evidenceRes.data || []) as any[]
+  const evidenceMap = new Map<string, { title: string; source: string; url: string | null }[]>()
+  for (const row of evidenceRows) {
+    const sig = row.raw_signals
+    if (!sig) continue
+    if (!evidenceMap.has(row.trend_id)) evidenceMap.set(row.trend_id, [])
+    evidenceMap.get(row.trend_id)!.push({ title: sig.title, source: sig.source, url: sig.url || null })
+  }
+  for (const [tid, sigs] of evidenceMap) {
+    evidenceMap.set(tid, sigs.slice(0, 5))
+  }
 
   const watching = snapshotItems
     .filter(item => {
@@ -54,6 +72,7 @@ export async function GET() {
       const trend = trendMap.get(item.trend_id)
       const opp = oppMap.get(item.trend_id)
       const lifecycle = lifecycleMap.get(item.trend_id)
+      const name = getTrendDisplayName(trend?.theme, item.trend_keyword, item.trend_id)
 
       const reasons: string[] = []
       if (item.signal_count < 3) {
@@ -76,14 +95,15 @@ export async function GET() {
 
       return {
         trend_id: item.trend_id,
-        theme: trend?.theme || 'Unknown',
-        description: trend?.description || null,
+        display_name: name,
+        theme: name,
         stage: lifecycle?.lifecycle_stage || null,
         stage_confidence: lifecycle?.stage_confidence || 0,
         comparable: lifecycle?.acceleration_comparable || false,
         signal_count: item.signal_count,
         momentum_score: item.momentum_score,
         reasons,
+        top_signals: evidenceMap.get(item.trend_id) || [],
       }
     })
     .slice(0, 10)

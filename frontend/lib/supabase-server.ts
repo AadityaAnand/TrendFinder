@@ -28,6 +28,17 @@ export function getServerSupabase(): SupabaseClient {
   return _serverClient
 }
 
+export function getTrendDisplayName(
+  theme?: string | null,
+  trendKeyword?: string | null,
+  trendId?: string
+): string {
+  if (theme && theme.trim()) return theme.trim()
+  if (trendKeyword && trendKeyword.trim()) return trendKeyword.trim()
+  if (trendId) return `Untitled trend #${trendId.slice(0, 6)}`
+  return 'Untitled trend'
+}
+
 export async function getLatestSnapshot(db: SupabaseClient) {
   const { data, error } = await db
     .from('trend_snapshots')
