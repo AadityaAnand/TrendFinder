@@ -371,6 +371,9 @@ def run_pipeline(skip_scrapers: bool = False, force: bool = False) -> dict:
         if run_scraper('opportunity_explainer'):
             stages_completed.append('explanation_generation')
 
+        if run_scraper('trend_intelligence'):
+            stages_completed.append('intelligence_generation')
+
         if run_scraper('trajectory_updater'):
             stages_completed.append('trajectory_update')
 

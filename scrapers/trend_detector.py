@@ -10,9 +10,23 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-DETECTOR_VERSION = 'phrase-topic-v1'
+DETECTOR_VERSION = 'phrase-topic-v2'
 SCORING_VERSION = 'norm-p90-decay7d-v1'
 LIFECYCLE_VERSION = 'lifecycle-v1'
+
+# Non-trend filter: reject trends that are just generic phrases or single headlines
+NON_TREND_PHRASES = {
+    'show', 'ask', 'tell', 'launch', 'update', 'release', 'announce',
+    'new', 'best', 'top', 'how', 'why', 'what', 'guide', 'tutorial',
+    'review', 'comparison', 'opinion', 'discussion', 'thoughts',
+    'hiring', 'jobs', 'salary', 'interview', 'career', 'remote-work',
+    'layoff', 'layoffs', 'culture', 'management', 'burnout',
+    'programming', 'software', 'engineering', 'development', 'technology',
+    'startup', 'startups', 'funding', 'investing', 'venture-capital',
+}
+
+MIN_SOURCES_FOR_HIGH_QUALITY = 2
+
 STOP_WORDS = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
     'of', 'with', 'is', 'are', 'was', 'were', 'been', 'be', 'have', 'has',
     'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may',
@@ -413,8 +427,38 @@ def group_signals_into_trends(signals, duplicate_ids, snapshot_id=None):
             'first_seen': first_seen
         })
 
-    trend_data.sort(key=lambda x: x['momentum_score'], reverse=True)
-    return trend_data[:30]
+    # Quality filter: reject non-trends and label quality
+    filtered_data = []
+    for trend in trend_data:
+        keyword_lower = trend['keyword'].lower().replace(' ', '-')
+        parts = keyword_lower.split('-')
+
+        # Reject if the trend name is a known non-trend phrase
+        if keyword_lower in NON_TREND_PHRASES or all(p in NON_TREND_PHRASES for p in parts):
+            continue
+
+        # Reject single-word trends that aren't tech terms
+        if len(parts) == 1 and parts[0] not in TECH_TERMS:
+            continue
+
+        # Compute source diversity for quality labeling
+        trend_signals_list = [s for s in unique_signals if s['id'] in trend['signal_ids']]
+        sources = set(s.get('source', '') for s in trend_signals_list)
+        trend['source_count'] = len(sources)
+        trend['sources'] = list(sources)
+
+        # Quality label: high if multi-source and 3+ signals, medium if 2+ signals, low otherwise
+        if len(sources) >= MIN_SOURCES_FOR_HIGH_QUALITY and trend['signal_count'] >= 3:
+            trend['quality'] = 'high'
+        elif trend['signal_count'] >= 2:
+            trend['quality'] = 'medium'
+        else:
+            trend['quality'] = 'low'
+
+        filtered_data.append(trend)
+
+    filtered_data.sort(key=lambda x: x['momentum_score'], reverse=True)
+    return filtered_data[:30]
 
 def create_snapshot(signal_count, unique_signal_count, duplicate_count):
     try:

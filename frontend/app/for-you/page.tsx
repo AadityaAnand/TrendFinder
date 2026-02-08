@@ -32,6 +32,24 @@ const STAGE_CONFIG: Record<string, { label: string; variant: 'success' | 'warnin
   fading: { label: 'Fading', variant: 'muted' },
 }
 
+interface BuildIdea {
+  idea: string
+  effort: string
+  audience: string
+}
+
+interface ExistingSolution {
+  name: string
+  gap: string
+}
+
+interface Intelligence {
+  summary: string
+  build_ideas: BuildIdea[]
+  existing_solutions: ExistingSolution[]
+  risks: string[]
+}
+
 interface Opportunity {
   id: string
   trend_id: string
@@ -86,9 +104,12 @@ function ForYouContent() {
   const { profileId, hasPrefs, ready, isLoggedIn } = useAuth()
   const [opportunities, setOpportunities] = useState<Opportunity[]>([])
   const [watching, setWatching] = useState<WatchingTrend[]>([])
+  const [intelligence, setIntelligence] = useState<Record<string, Intelligence>>({})
   const [loading, setLoading] = useState(true)
   const [hasQualified, setHasQualified] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set())
+  const [showWhyMap, setShowWhyMap] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     if (!ready) return
@@ -137,6 +158,24 @@ function ForYouContent() {
         const data = await watchRes.json()
         setWatching(data.watching || [])
       }
+
+      // Fetch intelligence for each opportunity's trend
+      const trendIds = [...new Set(opps.map(o => o.trend_id))]
+      const intelMap: Record<string, Intelligence> = {}
+      await Promise.all(
+        trendIds.map(async (tid) => {
+          try {
+            const res = await fetch(`/api/trends/${tid}/intelligence`)
+            if (res.ok) {
+              const data = await res.json()
+              if (data.intelligence) {
+                intelMap[tid] = data.intelligence
+              }
+            }
+          } catch { /* intelligence fetch is best-effort */ }
+        })
+      )
+      setIntelligence(intelMap)
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : 'Failed to load data')
     } finally {
@@ -174,6 +213,24 @@ function ForYouContent() {
 
   const getTitle = (opp: Opportunity): string => {
     return opp.display_name || opp.action_title || opp.detected_trends?.theme || 'Untitled'
+  }
+
+  const toggleExpanded = (id: string) => {
+    setExpandedCards(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const toggleWhy = (id: string) => {
+    setShowWhyMap(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
   }
 
   const noDataAtAll = opportunities.length === 0 && watching.length === 0
@@ -247,6 +304,9 @@ function ForYouContent() {
                 const compConfig = opp.competition ? COMPETITION_CONFIG[opp.competition.level] : null
                 const confidence = getConfidenceScore(opp)
                 const title = getTitle(opp)
+                const intel = intelligence[opp.trend_id]
+                const isExpanded = expandedCards.has(opp.id)
+                const showWhy = showWhyMap.has(opp.id)
 
                 return (
                   <div key={opp.id} className="border border-slate-200 rounded-xl p-5 hover:border-slate-300 transition">
@@ -272,11 +332,32 @@ function ForYouContent() {
                       </div>
                     </div>
 
-                    {opp.why_now && (
+                    {intel?.summary ? (
+                      <p className="text-sm text-slate-600 leading-relaxed mb-3">{intel.summary}</p>
+                    ) : opp.why_now ? (
                       <p className="text-sm text-slate-600 leading-relaxed mb-3">{opp.why_now}</p>
-                    )}
+                    ) : null}
 
-                    {actions.length > 0 && (
+                    {intel?.build_ideas && intel.build_ideas.length > 0 ? (
+                      <div className="mb-3">
+                        <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-1">What to build</p>
+                        <ul className="space-y-1">
+                          {intel.build_ideas.slice(0, 3).map((idea, i) => (
+                            <li key={i} className="text-sm text-slate-700 flex gap-2">
+                              <span className="text-slate-300 shrink-0">-</span>
+                              <span>
+                                {idea.idea}
+                                {idea.effort && (
+                                  <span className="ml-1.5 text-[10px] text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded">
+                                    {idea.effort}
+                                  </span>
+                                )}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : actions.length > 0 ? (
                       <div className="mb-3">
                         <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-1">What to build</p>
                         <ul className="space-y-0.5">
@@ -288,16 +369,46 @@ function ForYouContent() {
                           ))}
                         </ul>
                       </div>
+                    ) : null}
+
+                    {intel && (intel.existing_solutions?.length > 0 || intel.risks?.length > 0 || (opp.execution?.risk_flags?.length ?? 0) > 0) && (
+                      <button
+                        onClick={() => toggleExpanded(opp.id)}
+                        className="text-[11px] text-slate-400 hover:text-slate-600 transition mb-2"
+                      >
+                        {isExpanded ? 'Show less' : 'Show competitors & risks'}
+                      </button>
                     )}
 
-                    {opp.execution?.risk_flags && opp.execution.risk_flags.length > 0 && (
-                      <div className="mb-3">
-                        <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-1">Risks</p>
-                        <ul className="space-y-0.5">
-                          {opp.execution.risk_flags.slice(0, 2).map((risk, i) => (
-                            <li key={i} className="text-xs text-slate-500">{risk}</li>
-                          ))}
-                        </ul>
+                    {isExpanded && (
+                      <div className="space-y-3 mb-3">
+                        {intel?.existing_solutions && intel.existing_solutions.length > 0 && (
+                          <div>
+                            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-1">Existing solutions</p>
+                            <ul className="space-y-1">
+                              {intel.existing_solutions.map((sol, i) => (
+                                <li key={i} className="text-xs text-slate-600">
+                                  <span className="font-medium text-slate-700">{sol.name}</span>
+                                  {sol.gap && <span className="text-slate-400"> — {sol.gap}</span>}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {(intel?.risks?.length ?? 0) > 0 || (opp.execution?.risk_flags?.length ?? 0) > 0 ? (
+                          <div>
+                            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-1">Risks</p>
+                            <ul className="space-y-0.5">
+                              {(intel?.risks || []).map((risk, i) => (
+                                <li key={`r-${i}`} className="text-xs text-slate-500">{risk}</li>
+                              ))}
+                              {(opp.execution?.risk_flags || []).slice(0, 2).map((risk, i) => (
+                                <li key={`e-${i}`} className="text-xs text-slate-500">{risk}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        ) : null}
                       </div>
                     )}
 
@@ -322,7 +433,31 @@ function ForYouContent() {
                       >
                         View trend
                       </Link>
+                      <button
+                        onClick={() => toggleWhy(opp.id)}
+                        className="text-xs text-slate-400 hover:text-slate-600 transition"
+                      >
+                        {showWhy ? 'Hide' : 'Why am I seeing this?'}
+                      </button>
                     </div>
+
+                    {showWhy && (
+                      <div className="mt-3 p-3 bg-slate-50 rounded-lg text-xs text-slate-500 space-y-1">
+                        <p className="font-medium text-slate-600 mb-1">Why this opportunity matches you:</p>
+                        {(opp.fit_reasons || []).map((reason, i) => (
+                          <p key={i}>- {reason}</p>
+                        ))}
+                        {opp.qualified && (
+                          <p>- Passed all evidence gates (2+ sources, demand signals, buildable action)</p>
+                        )}
+                        {opp.personalized_score > 0 && (
+                          <p>- Personalized score: {Math.round(opp.personalized_score * 100)}% (60% quality + 40% relevance to your profile)</p>
+                        )}
+                        {opp.why_this_trend && (
+                          <p className="mt-1 text-slate-400 italic">{opp.why_this_trend}</p>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )
               })}

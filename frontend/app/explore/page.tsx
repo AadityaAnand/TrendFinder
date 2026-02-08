@@ -48,6 +48,7 @@ interface TrendItem {
   comparable: boolean
   qualified: boolean
   top_signals: { title: string; source: string; url: string | null }[]
+  summary: string | null
 }
 
 async function getTrends(): Promise<{ trends: TrendItem[]; snapshotTime: string | null; snapshotVersion: string | null }> {
@@ -106,6 +107,15 @@ async function getTrends(): Promise<{ trends: TrendItem[]; snapshotTime: string 
     evidenceMap.set(tid, sigs.slice(0, 5))
   }
 
+  // Fetch intelligence summaries
+  const { data: intelRows } = await db
+    .from('trend_intelligence')
+    .select('trend_id, summary')
+    .eq('snapshot_id', snapshot.id)
+    .in('trend_id', trendIds)
+
+  const intelMap = new Map((intelRows || []).map(i => [i.trend_id, i.summary]))
+
   const keywordMap = new Map(snapshotItems.map(s => [s.trend_id, s.trend_keyword]))
 
   const trends: TrendItem[] = snapshotItems
@@ -125,6 +135,7 @@ async function getTrends(): Promise<{ trends: TrendItem[]; snapshotTime: string 
         comparable: lifecycle?.acceleration_comparable || false,
         qualified: opp?.qualified || false,
         top_signals: evidenceMap.get(item.trend_id) || [],
+        summary: intelMap.get(item.trend_id) || null,
       }
     })
     .filter((t): t is TrendItem => t !== null)
@@ -341,6 +352,10 @@ export default async function ExplorePage({
                       ) : null}
                     </div>
                   </div>
+
+                  {trend.summary && (
+                    <p className="mt-1.5 text-xs text-slate-500 leading-relaxed line-clamp-2">{trend.summary}</p>
+                  )}
 
                   {trend.top_signals.length > 0 && (
                     <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1">

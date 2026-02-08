@@ -89,6 +89,42 @@ export default function LandingPage() {
 
       <div className="border-t border-slate-100">
         <div className="max-w-5xl mx-auto px-6 py-16">
+          <h2 className="text-2xl font-bold text-slate-900 mb-2">What you&apos;ll get</h2>
+          <p className="text-sm text-slate-500 mb-8 max-w-2xl">
+            Every day, TrendSignal answers one question: &quot;What should I build next, and why?&quot;
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-6">
+            <div className="p-5 rounded-xl border border-slate-200">
+              <h3 className="text-sm font-semibold text-slate-900 mb-1.5">Trend summaries</h3>
+              <p className="text-sm text-slate-500 leading-relaxed">
+                Plain-English explanations of what developers are talking about, what they need, and why it matters.
+              </p>
+            </div>
+            <div className="p-5 rounded-xl border border-slate-200">
+              <h3 className="text-sm font-semibold text-slate-900 mb-1.5">Build ideas</h3>
+              <p className="text-sm text-slate-500 leading-relaxed">
+                Specific, actionable product ideas with effort estimates — not generic &quot;build a tool for X&quot; suggestions.
+              </p>
+            </div>
+            <div className="p-5 rounded-xl border border-slate-200">
+              <h3 className="text-sm font-semibold text-slate-900 mb-1.5">Competitor landscape</h3>
+              <p className="text-sm text-slate-500 leading-relaxed">
+                Known existing solutions and their gaps, so you know where to differentiate.
+              </p>
+            </div>
+            <div className="p-5 rounded-xl border border-slate-200">
+              <h3 className="text-sm font-semibold text-slate-900 mb-1.5">Honest risk assessment</h3>
+              <p className="text-sm text-slate-500 leading-relaxed">
+                Every opportunity includes its uncertainty factors, evidence gaps, and timing risks.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="border-t border-slate-100 bg-slate-50/30">
+        <div className="max-w-5xl mx-auto px-6 py-16">
           <h2 className="text-2xl font-bold text-slate-900 mb-2">How trends become opportunities</h2>
           <p className="text-sm text-slate-500 mb-10">Six stages. Each one filters out noise. Only the strongest signals survive.</p>
 

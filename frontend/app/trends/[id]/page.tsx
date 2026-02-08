@@ -2,6 +2,7 @@ import { getServerSupabase, getLatestSnapshot, getTrendDisplayName } from '@/lib
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { SourceBadge } from '../../components/SourceBadge'
+import { MetricExplainer } from '../../components/MetricExplainer'
 
 interface TrajectoryPoint {
   snapshot_id: string
@@ -40,6 +41,13 @@ interface OpportunityData {
   qualified: boolean
 }
 
+interface IntelligenceData {
+  summary: string | null
+  build_ideas: { idea: string; effort: string; audience: string }[]
+  existing_solutions: { name: string; gap: string }[]
+  risks: string[]
+}
+
 interface TrendData {
   id: string
   theme: string
@@ -55,6 +63,7 @@ interface TrendData {
   competition: CompetitionData | null
   signals: SignalData[]
   opportunity: OpportunityData | null
+  intelligence: IntelligenceData | null
 }
 
 async function getTrendData(id: string): Promise<TrendData | null> {
@@ -174,6 +183,34 @@ async function getTrendData(id: string): Promise<TrendData | null> {
     }
   }
 
+  // Fetch intelligence
+  let intelligence: IntelligenceData | null = null
+  if (snapshot) {
+    const { data: intelRow } = await supabase
+      .from('trend_intelligence')
+      .select('summary, build_ideas, existing_solutions, risks')
+      .eq('trend_id', id)
+      .eq('snapshot_id', snapshot.id)
+      .single()
+
+    if (intelRow) {
+      let buildIdeas = intelRow.build_ideas
+      if (typeof buildIdeas === 'string') {
+        try { buildIdeas = JSON.parse(buildIdeas) } catch { buildIdeas = [] }
+      }
+      let existingSolutions = intelRow.existing_solutions
+      if (typeof existingSolutions === 'string') {
+        try { existingSolutions = JSON.parse(existingSolutions) } catch { existingSolutions = [] }
+      }
+      intelligence = {
+        summary: intelRow.summary || null,
+        build_ideas: buildIdeas || [],
+        existing_solutions: existingSolutions || [],
+        risks: intelRow.risks || [],
+      }
+    }
+  }
+
   return {
     id: trend.id,
     theme: displayName,
@@ -189,6 +226,7 @@ async function getTrendData(id: string): Promise<TrendData | null> {
     competition,
     signals: signals.slice(0, 10),
     opportunity,
+    intelligence,
   }
 }
 
@@ -460,6 +498,66 @@ export default async function TrendDetailPage({
           )}
         </div>
 
+        {trend.intelligence && (
+          <div className="mb-10 space-y-6">
+            {trend.intelligence.summary && (
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900 mb-2">Summary</h2>
+                <p className="text-sm text-slate-600 leading-relaxed">{trend.intelligence.summary}</p>
+              </div>
+            )}
+
+            {trend.intelligence.build_ideas.length > 0 && (
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900 mb-2">What to build</h2>
+                <div className="space-y-2">
+                  {trend.intelligence.build_ideas.map((idea, i) => (
+                    <div key={i} className="border border-slate-100 rounded-lg p-3">
+                      <p className="text-sm font-medium text-slate-800">{idea.idea}</p>
+                      <div className="flex items-center gap-3 mt-1">
+                        {idea.effort && (
+                          <span className="text-[11px] text-slate-400 bg-slate-50 px-2 py-0.5 rounded">{idea.effort}</span>
+                        )}
+                        {idea.audience && (
+                          <span className="text-[11px] text-slate-400">{idea.audience}</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {trend.intelligence.existing_solutions.length > 0 && (
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900 mb-2">Existing solutions</h2>
+                <div className="space-y-1.5">
+                  {trend.intelligence.existing_solutions.map((sol, i) => (
+                    <div key={i} className="text-sm">
+                      <span className="font-medium text-slate-700">{sol.name}</span>
+                      {sol.gap && <span className="text-slate-400"> — {sol.gap}</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {trend.intelligence.risks.length > 0 && (
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900 mb-2">Risks</h2>
+                <ul className="space-y-1">
+                  {trend.intelligence.risks.map((risk, i) => (
+                    <li key={i} className="text-sm text-slate-600 flex gap-2">
+                      <span className="text-slate-300 shrink-0">-</span>
+                      <span>{risk}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+
         {trend.opportunity && trend.opportunity.qualified && (
           <div className="mb-10 p-5 bg-emerald-50 border border-emerald-200 rounded-xl">
             <div className="flex items-center gap-2 mb-3">
@@ -675,7 +773,17 @@ export default async function TrendDetailPage({
           </div>
         </details>
 
-        <div className="text-xs text-gray-400">
+        <MetricExplainer metrics={[
+          'momentum',
+          ...(trend.peak_momentum ? ['peak_momentum'] : []),
+          'signal_count',
+          'stage',
+          'qualified',
+          ...(trend.timing ? ['timing'] : []),
+          ...(trend.competition ? ['competition'] : []),
+        ]} />
+
+        <div className="text-xs text-gray-400 mt-6">
           <details>
             <summary className="cursor-pointer hover:text-gray-600">System info</summary>
             <div className="mt-2 space-y-1">
