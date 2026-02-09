@@ -11,10 +11,11 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-OPPORTUNITY_VERSION = 'opportunity-v1'
+OPPORTUNITY_VERSION = 'opportunity-v2'
 MIN_INDEPENDENT_ARTIFACTS = 2
 MIN_STAGE_CONFIDENCE = 0.6
 MIN_DEMAND_HITS = 1
+MIN_HYPOTHESIS_CONFIDENCE = 0.4
 
 DEMAND_PATTERNS = [
     r'\bhow to\b',
@@ -381,6 +382,26 @@ def calculate_opportunity_score(
     return 0.5 * signal_quality + 0.3 * demand_strength + 0.2 * actionability
 
 
+def get_hypothesis(supabase: Client, snapshot_id: str, trend_id: str) -> Optional[dict]:
+    response = supabase.table('problem_hypotheses') \
+        .select('hypothesis_title, hypothesis_status, confidence, pain_signals, who_it_affects') \
+        .eq('snapshot_id', snapshot_id) \
+        .eq('trend_id', trend_id) \
+        .limit(1) \
+        .execute()
+    return response.data[0] if response.data else None
+
+
+def check_hypothesis_gate(hypothesis: Optional[dict]) -> tuple[bool, list[str]]:
+    if not hypothesis:
+        return False, ['no_hypothesis']
+    if hypothesis.get('hypothesis_status') != 'valid':
+        return False, [f"hypothesis_status_{hypothesis.get('hypothesis_status', 'missing')}"]
+    if (hypothesis.get('confidence') or 0) < MIN_HYPOTHESIS_CONFIDENCE:
+        return False, ['hypothesis_low_confidence']
+    return True, []
+
+
 def evaluate_trend_as_opportunity(
     supabase: Client,
     snapshot_id: str,
@@ -412,6 +433,17 @@ def evaluate_trend_as_opportunity(
     if not evidence_ok:
         result['rejection_reasons'].append(evidence_reason)
         return result
+
+    hypothesis = get_hypothesis(supabase, snapshot_id, trend_id)
+    hypothesis_ok, hypothesis_reasons = check_hypothesis_gate(hypothesis)
+    if not hypothesis_ok:
+        result['rejection_reasons'].extend(hypothesis_reasons)
+        return result
+
+    if hypothesis and hypothesis.get('hypothesis_title'):
+        result['hypothesis_title'] = hypothesis['hypothesis_title']
+        result['pain_signals'] = hypothesis.get('pain_signals', [])
+        result['who_it_affects'] = hypothesis.get('who_it_affects', [])
 
     confidence_ok, confidence_reasons = check_confidence_gate(lifecycle)
     if not confidence_ok:

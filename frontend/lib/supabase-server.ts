@@ -39,6 +39,18 @@ export function getTrendDisplayName(
   return 'Untitled trend'
 }
 
+export function getHypothesisDisplayTitle(
+  hypothesisTitle?: string | null,
+  theme?: string | null,
+  trendKeyword?: string | null,
+  trendId?: string
+): string {
+  if (hypothesisTitle && hypothesisTitle.trim() && hypothesisTitle.trim().length > 10) {
+    return hypothesisTitle.trim()
+  }
+  return getTrendDisplayName(theme, trendKeyword, trendId)
+}
+
 export async function getLatestSnapshot(db: SupabaseClient) {
   const { data, error } = await db
     .from('trend_snapshots')

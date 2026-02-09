@@ -113,12 +113,48 @@ export default function MethodPage() {
       )
     },
     {
-      title: 'How trends become qualified opportunities',
+      title: 'How signals become problem hypotheses',
       content: (
         <div className="space-y-3">
           <p>
-            Not every trend is actionable. To become a <strong>qualified opportunity</strong>, a trend must pass
-            all four evidence gates:
+            After trends are detected, Rishi runs a <strong>hypothesis generator</strong> that tries to identify
+            the real <em>problem</em> behind the signals &mdash; not just the topic.
+          </p>
+          <p>
+            Each trend goes through a three-tier classification:
+          </p>
+          <div className="space-y-2 mt-2">
+            <div className="flex items-start gap-3">
+              <span className="shrink-0 px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 text-xs font-medium">Valid</span>
+              <p className="text-slate-500">Evidence is strong enough to form a problem statement. Multiple independent sources,
+                demand signals, and sufficient history. An LLM synthesizes the evidence into a hypothesis title,
+                summary, affected personas, and pain signals.</p>
+            </div>
+            <div className="flex items-start gap-3">
+              <span className="shrink-0 px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 text-xs font-medium">Uncertain</span>
+              <p className="text-slate-500">The topic shows promise but doesn&apos;t have enough independent evidence or demand signals
+                to confidently say it represents a real problem. Rishi keeps watching it.</p>
+            </div>
+            <div className="flex items-start gap-3">
+              <span className="shrink-0 px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-xs font-medium">Topic only</span>
+              <p className="text-slate-500">Signals are mostly narrative, opinion, or from a single source. This is a topic people
+                are discussing, not a problem people need solved. Filtered from the default Explore view.</p>
+            </div>
+          </div>
+          <p>
+            The hypothesis classification uses deterministic gates first (source diversity, demand regex matching,
+            narrative detection) and only calls the LLM when evidence passes a minimum quality bar. This avoids
+            generating confident-sounding hypotheses from thin evidence.
+          </p>
+        </div>
+      )
+    },
+    {
+      title: 'How hypotheses become qualified opportunities',
+      content: (
+        <div className="space-y-3">
+          <p>
+            A hypothesis must pass all evidence gates to become a <strong>qualified opportunity</strong>:
           </p>
           <div className="space-y-2 mt-2">
             <div className="flex items-start gap-3">
@@ -138,12 +174,19 @@ export default function MethodPage() {
             <div className="flex items-start gap-3">
               <span className="shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-bold">3</span>
               <div>
+                <p className="font-medium text-slate-800">Valid hypothesis</p>
+                <p className="text-slate-500 mt-0.5">The hypothesis generator must classify this as &ldquo;valid&rdquo; with confidence above 40%. Topic-only and uncertain signals are held back.</p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3">
+              <span className="shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-bold">4</span>
+              <div>
                 <p className="font-medium text-slate-800">Actionability</p>
                 <p className="text-slate-500 mt-0.5">A specific, buildable product or feature can be suggested &mdash; not just &ldquo;this topic is popular&rdquo;.</p>
               </div>
             </div>
             <div className="flex items-start gap-3">
-              <span className="shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-bold">4</span>
+              <span className="shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-bold">5</span>
               <div>
                 <p className="font-medium text-slate-800">Confidence gate</p>
                 <p className="text-slate-500 mt-0.5">Lifecycle stage classification confidence must exceed 60%. Below that, the data is too uncertain to recommend.</p>
@@ -215,36 +258,37 @@ export default function MethodPage() {
       content: (
         <div className="space-y-3">
           <p>
-            <strong>For You</strong> shows opportunities personalized to your profile. Your roles, domains,
-            tech stack, time horizon, team size, and risk tolerance are used to rank opportunities by relevance.
+            <strong>For You</strong> shows problem hypotheses personalized to your profile. Your roles, domains,
+            tech stack, time horizon, team size, and risk tolerance are used to rank hypotheses by relevance.
             The ranking formula: 60% quality score + 40% relevance to your preferences.
           </p>
           <p>
-            Personalization only changes the <em>order</em> of results &mdash; it never hides qualified opportunities.
+            Personalization only changes the <em>order</em> of results &mdash; it never hides qualified hypotheses.
+            If no hypotheses have passed all evidence gates, Rishi shows top emerging signals still gathering evidence.
           </p>
           <p>
-            <strong>Explore</strong> shows every detected trend, regardless of qualification status or your preferences.
-            It&apos;s an unfiltered view of the entire landscape, useful for discovery and learning.
+            <strong>Explore</strong> shows every hypothesis, regardless of qualification status or your preferences.
+            You can filter by hypothesis status (valid, uncertain, topic-only) and lifecycle stage.
+            Topic-only items are hidden by default but visible via the filter.
           </p>
         </div>
       )
     },
     {
-      title: 'Why "Name pending" appears and how Rishi resolves it',
+      title: 'How hypothesis titles are generated',
       content: (
         <div className="space-y-3">
           <p>
-            When Rishi first detects a cluster of signals, it may not have a clean human-readable name for the trend yet.
-            In these cases, you&apos;ll see a derived name based on the most common keyword from the evidence,
-            along with a small &ldquo;Name pending&rdquo; badge.
+            When Rishi has enough evidence to form a valid hypothesis, the LLM generates a <strong>problem statement</strong>
+            as the title &mdash; e.g., &ldquo;Teams can&apos;t track AI tool usage costs&rdquo; instead of just &ldquo;AI cost tracking&rdquo;.
           </p>
           <p>
-            As more signals arrive, Rishi refines the trend name. The topic extraction improves with more data points,
-            and after 2-3 pipeline runs the name usually stabilizes into something meaningful.
+            For uncertain or topic-only signals, you&apos;ll see the trend&apos;s topic name as a fallback. As more
+            evidence arrives, Rishi may upgrade the classification and generate a proper hypothesis title.
           </p>
           <p>
             This is intentional: Rishi prefers showing you uncertain-but-honest labels over making up confident-sounding
-            names that might mislead you.
+            problem statements that might mislead you.
           </p>
         </div>
       )
@@ -257,7 +301,7 @@ export default function MethodPage() {
         <div className="mb-10">
           <h1 className="text-3xl font-bold text-slate-900 tracking-tight">How Rishi works</h1>
           <p className="text-base text-slate-500 mt-2 max-w-2xl leading-relaxed">
-            Rishi watches signals, filters noise, and surfaces what&apos;s actionable.
+            Rishi watches signals, forms problem hypotheses, and surfaces what&apos;s actionable.
             Here&apos;s exactly how it works, from raw data to personalized recommendations.
           </p>
         </div>
@@ -270,7 +314,7 @@ export default function MethodPage() {
             </span>
             <span className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-cyan-500" />
-              4 evidence gates
+              5 evidence gates
             </span>
             <span className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-emerald-500" />
@@ -304,12 +348,20 @@ export default function MethodPage() {
               definition="Where a trend sits in its lifecycle: emerging, rising, peaking, stable, or declining. Derived from momentum acceleration patterns."
             />
             <GlossaryEntry
+              term="Problem hypothesis"
+              definition="A problem statement synthesized from evidence signals. Valid hypotheses identify who is affected, what pain they feel, and what demand exists."
+            />
+            <GlossaryEntry
+              term="Hypothesis status"
+              definition="Valid = strong evidence for a real problem. Uncertain = promising but needs more data. Topic only = discussion without a clear problem to solve."
+            />
+            <GlossaryEntry
               term="Qualified opportunity"
-              definition="A trend that has passed all four evidence gates: demand, independence, actionability, and confidence. Ready for action."
+              definition="A hypothesis that has passed all five evidence gates: demand, independence, valid hypothesis, actionability, and confidence. Ready for action."
             />
             <GlossaryEntry
               term="Watching"
-              definition="A trend that looks promising but hasn't passed all gates yet. Rishi tracks it and will promote it when evidence strengthens."
+              definition="A signal that hasn't formed a valid hypothesis yet. Rishi tracks it and will promote it when evidence strengthens."
             />
           </div>
         </div>

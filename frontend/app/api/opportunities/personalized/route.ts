@@ -1,4 +1,4 @@
-import { getServerSupabase, getLatestSnapshot, getTrendDisplayName } from '@/lib/supabase-server'
+import { getServerSupabase, getLatestSnapshot, getHypothesisDisplayTitle } from '@/lib/supabase-server'
 import { NextResponse } from 'next/server'
 
 // Relevance scoring weights (mirrors Python relevance_scorer.py)
@@ -350,6 +350,18 @@ export async function GET(request: Request) {
   const trendIds = [...new Set((opportunities || []).map(o => o.trend_id).filter(Boolean))]
   const oppIds = (opportunities || []).map(o => o.id).filter(Boolean)
 
+  // Fetch hypotheses for all trends
+  const { data: hypotheses } = await supabase
+    .from('problem_hypotheses')
+    .select('trend_id, hypothesis_title, hypothesis_summary, hypothesis_status, confidence, pain_signals, who_it_affects, demand_evidence')
+    .eq('snapshot_id', snapshot.id)
+    .in('trend_id', trendIds)
+
+  const hypothesisMap: Record<string, Record<string, unknown>> = {}
+  for (const h of (hypotheses || [])) {
+    hypothesisMap[h.trend_id] = h
+  }
+
   // Fetch outcome stats for all trends (Phase 6)
   const { data: outcomeStats } = await supabase
     .from('trend_outcome_stats')
@@ -496,7 +508,13 @@ export async function GET(request: Request) {
       const explanations = Array.isArray(opp.opportunity_explanations)
         ? opp.opportunity_explanations[0]
         : opp.opportunity_explanations
-      const displayName = getTrendDisplayName(trendData.theme, null, opp.trend_id)
+      const hypothesis = hypothesisMap[opp.trend_id] || null
+      const displayName = getHypothesisDisplayTitle(
+        hypothesis?.hypothesis_title as string | undefined,
+        trendData.theme,
+        null,
+        opp.trend_id
+      )
 
       const result: Record<string, unknown> = {
         ...opp,
@@ -512,6 +530,18 @@ export async function GET(request: Request) {
         personalized_score,
         global_score: opp.opportunity_score,
         is_saved: savedIds.has(opp.id)
+      }
+
+      if (hypothesis) {
+        result.hypothesis = {
+          title: hypothesis.hypothesis_title,
+          summary: hypothesis.hypothesis_summary,
+          status: hypothesis.hypothesis_status,
+          confidence: hypothesis.confidence,
+          pain_signals: hypothesis.pain_signals,
+          who_it_affects: hypothesis.who_it_affects,
+          demand_evidence: hypothesis.demand_evidence,
+        }
       }
 
       // Include outcome data if present (Phase 6)

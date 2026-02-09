@@ -1,4 +1,4 @@
-import { getServerSupabase, getLatestSnapshot, getTrendDisplayName } from '@/lib/supabase-server'
+import { getServerSupabase, getLatestSnapshot, getTrendDisplayName, getHypothesisDisplayTitle } from '@/lib/supabase-server'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { SourceBadge } from '../../components/SourceBadge'
@@ -48,6 +48,16 @@ interface IntelligenceData {
   risks: string[]
 }
 
+interface HypothesisData {
+  hypothesis_title: string
+  hypothesis_summary: string | null
+  hypothesis_status: string
+  confidence: number
+  who_it_affects: string[]
+  pain_signals: string[]
+  demand_evidence: { title: string; source: string; url: string }[]
+}
+
 interface TrendData {
   id: string
   theme: string
@@ -64,6 +74,7 @@ interface TrendData {
   signals: SignalData[]
   opportunity: OpportunityData | null
   intelligence: IntelligenceData | null
+  hypothesis: HypothesisData | null
 }
 
 async function getTrendData(id: string): Promise<TrendData | null> {
@@ -211,9 +222,39 @@ async function getTrendData(id: string): Promise<TrendData | null> {
     }
   }
 
+  let hypothesis: HypothesisData | null = null
+  if (snapshot) {
+    const { data: hRow } = await supabase
+      .from('problem_hypotheses')
+      .select('hypothesis_title, hypothesis_summary, hypothesis_status, confidence, who_it_affects, pain_signals, demand_evidence')
+      .eq('trend_id', id)
+      .eq('snapshot_id', snapshot.id)
+      .limit(1)
+      .single()
+
+    if (hRow) {
+      const parseJson = (v: unknown, fallback: unknown[]) => {
+        if (!v) return fallback
+        if (typeof v === 'string') { try { return JSON.parse(v) } catch { return fallback } }
+        return v
+      }
+      hypothesis = {
+        hypothesis_title: hRow.hypothesis_title || '',
+        hypothesis_summary: hRow.hypothesis_summary || null,
+        hypothesis_status: hRow.hypothesis_status || 'uncertain',
+        confidence: hRow.confidence || 0,
+        who_it_affects: parseJson(hRow.who_it_affects, []) as string[],
+        pain_signals: parseJson(hRow.pain_signals, []) as string[],
+        demand_evidence: parseJson(hRow.demand_evidence, []) as { title: string; source: string; url: string }[],
+      }
+    }
+  }
+
+  const finalTitle = getHypothesisDisplayTitle(hypothesis?.hypothesis_title, displayName, null, id)
+
   return {
     id: trend.id,
-    theme: displayName,
+    theme: finalTitle,
     status: trend.status,
     first_seen: trend.first_seen,
     trajectory,
@@ -227,6 +268,7 @@ async function getTrendData(id: string): Promise<TrendData | null> {
     signals: signals.slice(0, 10),
     opportunity,
     intelligence,
+    hypothesis,
   }
 }
 
@@ -465,24 +507,22 @@ export default async function TrendDetailPage({
           <Link href="/explore" className="text-slate-400 hover:text-indigo-600 transition">Explore</Link>
         </div>
 
-        <div className="flex items-center gap-3 mb-3">
-          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">
-            {trend.theme}
-          </h1>
-          {(trend.theme === 'Emerging trend' || trend.theme.startsWith('Untitled trend')) && (
-            <span className="shrink-0 text-[10px] font-medium text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
-              Name pending
+        <h1 className="text-2xl font-semibold text-slate-900 tracking-tight mb-2">
+          {trend.theme}
+        </h1>
+
+        <div className="flex items-center gap-2 flex-wrap mb-4">
+          {trend.hypothesis && (
+            <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
+              trend.hypothesis.hypothesis_status === 'valid' ? 'bg-indigo-50 text-indigo-600'
+              : trend.hypothesis.hypothesis_status === 'topic_only' ? 'bg-slate-100 text-slate-500'
+              : 'bg-amber-50 text-amber-600'
+            }`}>
+              {trend.hypothesis.hypothesis_status === 'valid' ? 'Valid hypothesis'
+              : trend.hypothesis.hypothesis_status === 'topic_only' ? 'Topic only'
+              : 'Uncertain'}
             </span>
           )}
-        </div>
-
-        {narrativeParts.length > 0 && (
-          <p className="text-sm text-slate-500 leading-relaxed mb-6 max-w-2xl">
-            {narrativeParts.join(' ')}
-          </p>
-        )}
-
-        <div className="flex items-center gap-2 flex-wrap mb-8">
           {stageConfig && (
             <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${stageConfig.color}`}>
               {stageConfig.label}
@@ -504,6 +544,74 @@ export default async function TrendDetailPage({
             </span>
           )}
         </div>
+
+        {narrativeParts.length > 0 && (
+          <p className="text-sm text-slate-500 leading-relaxed mb-6 max-w-2xl">
+            {narrativeParts.join(' ')}
+          </p>
+        )}
+
+        {trend.hypothesis && trend.hypothesis.hypothesis_status !== 'topic_only' && (
+          <div className="mb-10 space-y-5">
+            {trend.hypothesis.hypothesis_summary && (
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900 mb-2">Problem hypothesis</h2>
+                <p className="text-sm text-slate-600 leading-relaxed">{trend.hypothesis.hypothesis_summary}</p>
+              </div>
+            )}
+
+            {trend.hypothesis.who_it_affects.length > 0 && (
+              <div>
+                <h2 className="text-sm font-semibold text-slate-700 mb-1.5">Who it affects</h2>
+                <div className="flex flex-wrap gap-2">
+                  {trend.hypothesis.who_it_affects.map((persona, i) => (
+                    <span key={i} className="text-xs text-slate-600 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-100">
+                      {persona}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {trend.hypothesis.pain_signals.length > 0 && (
+              <div>
+                <h2 className="text-sm font-semibold text-slate-700 mb-1.5">Pain signals</h2>
+                <ul className="space-y-1">
+                  {trend.hypothesis.pain_signals.map((pain, i) => (
+                    <li key={i} className="text-sm text-slate-600 flex gap-2">
+                      <span className="text-indigo-400 shrink-0">&bull;</span>
+                      <span>{pain}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {trend.hypothesis.demand_evidence.length > 0 && (
+              <div>
+                <h2 className="text-sm font-semibold text-slate-700 mb-1.5">Demand evidence</h2>
+                <ul className="space-y-1">
+                  {trend.hypothesis.demand_evidence.map((d, i) => (
+                    <li key={i} className="text-xs text-slate-500">
+                      <span className="text-slate-400">[{d.source}]</span>{' '}
+                      {d.url ? (
+                        <a href={d.url} target="_blank" rel="noopener noreferrer" className="hover:text-indigo-600 transition-colors">
+                          {d.title}
+                        </a>
+                      ) : d.title}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {trend.hypothesis.confidence > 0 && (
+              <p className="text-xs text-slate-400">
+                Hypothesis confidence: {Math.round(trend.hypothesis.confidence * 100)}%
+              </p>
+            )}
+          </div>
+        )}
 
         {trend.intelligence && (
           <div className="mb-10 space-y-6">
