@@ -110,8 +110,8 @@ function ChipSelect({
             onClick={() => toggle(option.value)}
             className={`px-3.5 py-2 rounded-lg text-sm font-medium transition border ${
               isSelected
-                ? 'bg-slate-900 text-white border-slate-900'
-                : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                ? 'bg-indigo-600 text-white border-indigo-600'
+                : 'bg-background text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-50'
             }`}
             title={option.description}
           >
@@ -228,7 +228,7 @@ export default function SettingsPage() {
       setLastSavedAt(new Date().toISOString())
 
       if (isOnboarding) {
-        router.push('/for-you')
+        router.push('/overview')
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save. Please try again.')
@@ -251,8 +251,8 @@ export default function SettingsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
-        <div className="w-5 h-5 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" />
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="w-5 h-5 border-2 border-slate-300 border-t-indigo-600 rounded-full animate-spin" />
       </div>
     )
   }
@@ -283,7 +283,7 @@ export default function SettingsPage() {
           value={avoidTopics}
           onChange={(e) => setAvoidTopics(e.target.value)}
           placeholder="e.g., crypto, blockchain"
-          className="w-full px-3.5 py-2.5 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition"
+          className="w-full px-3.5 py-2.5 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
         />
         <p className="text-xs text-slate-400 mt-1.5">Comma-separated. These topics will be ranked lower, not hidden.</p>
       </div>
@@ -307,7 +307,7 @@ export default function SettingsPage() {
   ]
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-background">
       <div className="max-w-xl mx-auto px-6 py-12">
         {/* Header */}
         <div className="mb-8">
@@ -331,14 +331,14 @@ export default function SettingsPage() {
               <button
                 onClick={() => setStep(i)}
                 className={`flex items-center gap-2 text-xs font-medium transition ${
-                  i === step ? 'text-slate-900' : i < step ? 'text-emerald-600' : 'text-slate-400'
+                  i === step ? 'text-slate-900' : i < step ? 'text-indigo-600' : 'text-slate-400'
                 }`}
               >
                 <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-semibold border transition ${
                   i === step
-                    ? 'border-slate-900 bg-slate-900 text-white'
+                    ? 'border-indigo-600 bg-indigo-600 text-white'
                     : i < step
-                    ? 'border-emerald-500 bg-emerald-500 text-white'
+                    ? 'border-indigo-500 bg-indigo-500 text-white'
                     : 'border-slate-200 text-slate-400'
                 }`}>
                   {i < step ? (
@@ -352,7 +352,7 @@ export default function SettingsPage() {
                 <span className="hidden sm:inline">{s.title}</span>
               </button>
               {i < STEPS.length - 1 && (
-                <div className={`grow h-px ${i < step ? 'bg-emerald-300' : 'bg-slate-200'}`} />
+                <div className={`grow h-px ${i < step ? 'bg-indigo-300' : 'bg-slate-200'}`} />
               )}
             </div>
           ))}
@@ -371,7 +371,7 @@ export default function SettingsPage() {
         )}
 
         {saved && !isOnboarding && (
-          <div className="mb-6 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-sm text-emerald-700">
+          <div className="mb-6 p-3 bg-indigo-50 border border-indigo-200 rounded-lg text-sm text-indigo-700">
             Preferences saved successfully.
           </div>
         )}
@@ -397,7 +397,7 @@ export default function SettingsPage() {
             className={`px-6 py-2.5 rounded-lg text-sm font-semibold transition ${
               saving
                 ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
-                : 'bg-slate-900 text-white hover:bg-slate-800'
+                : 'bg-indigo-600 text-white hover:bg-indigo-700'
             }`}
           >
             {step < STEPS.length - 1

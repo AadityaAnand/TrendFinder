@@ -353,14 +353,14 @@ function MomentumChart({ trajectory }: { trajectory: TrajectoryPoint[] }) {
       )}
       <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full" preserveAspectRatio="none">
         {segments.map((seg, i) => (
-          <polyline key={i} fill="none" stroke="#10b981" strokeWidth="0.5" points={seg.points} />
+          <polyline key={i} fill="none" stroke="#4f46e5" strokeWidth="0.5" points={seg.points} />
         ))}
         {filledData.map((d, i) => {
           if (!d.hasData || !d.point) return null
           const x = padding + (i / (filledData.length - 1 || 1)) * (width - 2 * padding)
           const y = height - padding - ((d.point.momentum || 0) - minMomentum) / range * (height - 2 * padding)
           return (
-            <circle key={i} cx={x} cy={y} r={d.point.qualified ? 1.5 : 0.8} fill={d.point.qualified ? '#10b981' : '#9ca3af'} />
+            <circle key={i} cx={x} cy={y} r={d.point.qualified ? 1.5 : 0.8} fill={d.point.qualified ? '#4f46e5' : '#9ca3af'} />
           )
         })}
       </svg>
@@ -457,17 +457,24 @@ export default async function TrendDetailPage({
   const signalGroups = groupSignalsBySource(trend.signals)
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-background">
       <div className="max-w-3xl mx-auto px-6 py-10">
         <div className="flex items-center gap-3 mb-6 text-sm">
-          <Link href="/for-you" className="text-slate-400 hover:text-slate-600 transition">For You</Link>
+          <Link href="/for-you" className="text-slate-400 hover:text-indigo-600 transition">For You</Link>
           <span className="text-slate-300">/</span>
-          <Link href="/explore" className="text-slate-400 hover:text-slate-600 transition">Explore</Link>
+          <Link href="/explore" className="text-slate-400 hover:text-indigo-600 transition">Explore</Link>
         </div>
 
-        <h1 className="text-3xl font-bold text-slate-900 tracking-tight mb-3">
-          {trend.theme}
-        </h1>
+        <div className="flex items-center gap-3 mb-3">
+          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">
+            {trend.theme}
+          </h1>
+          {(trend.theme === 'Emerging trend' || trend.theme.startsWith('Untitled trend')) && (
+            <span className="shrink-0 text-[10px] font-medium text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+              Name pending
+            </span>
+          )}
+        </div>
 
         {narrativeParts.length > 0 && (
           <p className="text-sm text-slate-500 leading-relaxed mb-6 max-w-2xl">
@@ -559,10 +566,10 @@ export default async function TrendDetailPage({
         )}
 
         {trend.opportunity && trend.opportunity.qualified && (
-          <div className="mb-10 p-5 bg-emerald-50 border border-emerald-200 rounded-xl">
+          <div className="mb-10 p-5 bg-indigo-50 border border-indigo-200 rounded-xl">
             <div className="flex items-center gap-2 mb-3">
-              <span className="w-2 h-2 rounded-full bg-emerald-500" />
-              <span className="text-sm font-semibold text-emerald-800">Qualified opportunity</span>
+              <span className="w-2 h-2 rounded-full bg-indigo-500" />
+              <span className="text-sm font-semibold text-indigo-800">Qualified opportunity</span>
             </div>
             <h3 className="text-base font-semibold text-slate-900 mb-2">{trend.opportunity.action_title}</h3>
             {trend.opportunity.why_now && (
@@ -622,7 +629,7 @@ export default async function TrendDetailPage({
                             href={sig.url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-sm text-slate-700 hover:text-emerald-600 transition"
+                            className="text-sm text-slate-700 hover:text-indigo-600 transition"
                           >
                             {sig.title}
                           </a>
@@ -757,7 +764,7 @@ export default async function TrendDetailPage({
                             </td>
                             <td className="px-4 py-2.5">
                               {point.qualified ? (
-                                <span className="text-green-600 text-xs">Yes</span>
+                                <span className="text-indigo-600 text-xs">Yes</span>
                               ) : (
                                 <span className="text-gray-300 text-xs">{'\u2014'}</span>
                               )}

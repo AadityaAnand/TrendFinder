@@ -1,13 +1,25 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #fafbfc;
+  --foreground: #0f1729;
+  --accent: #4f46e5;
+  --accent-light: #e0e7ff;
+  --accent-muted: #818cf8;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --border: #e2e8f0;
+  --border-subtle: #f1f5f9;
+  --text-primary: #0f1729;
+  --text-secondary: #475569;
+  --text-tertiary: #94a3b8;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-accent: var(--accent);
+  --color-accent-light: var(--accent-light);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -22,5 +34,80 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.rishi-gradient-text {
+  background: linear-gradient(135deg, #4f46e5, #06b6d4);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.rishi-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.rishi-card:hover {
+  border-color: #c7d2fe;
+  box-shadow: 0 1px 3px 0 rgba(79, 70, 229, 0.04), 0 1px 2px -1px rgba(79, 70, 229, 0.04);
+}
+
+.rishi-section {
+  border-top: 1px solid var(--border-subtle);
+  background: linear-gradient(180deg, rgba(241, 245, 249, 0.3) 0%, rgba(250, 251, 252, 0) 100%);
+}
+
+.rishi-btn-primary {
+  background: var(--accent);
+  color: white;
+  padding: 0.625rem 1.5rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  transition: background 0.2s, transform 0.1s;
+}
+
+.rishi-btn-primary:hover {
+  background: #4338ca;
+}
+
+.rishi-btn-primary:active {
+  transform: scale(0.98);
+}
+
+.rishi-btn-secondary {
+  background: white;
+  color: var(--text-primary);
+  padding: 0.625rem 1.5rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.rishi-btn-secondary:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.rishi-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+.accordion-content {
+  overflow: hidden;
+  transition: max-height 0.3s ease;
 }

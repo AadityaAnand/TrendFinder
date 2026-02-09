@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "TrendSignal — Opportunity Intelligence",
-  description: "Evidence-backed trend intelligence from Hacker News, GitHub, Dev.to, and Reddit.",
+  title: "Rishi — Evidence-Based Foresight Engine",
+  description: "Rishi watches developer signals, filters noise, and surfaces what's actionable. Evidence-backed trend intelligence from Hacker News, GitHub, Dev.to, and Reddit.",
 };
 
 export default function RootLayout({

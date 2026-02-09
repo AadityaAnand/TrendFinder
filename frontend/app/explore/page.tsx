@@ -38,6 +38,15 @@ function matchesDomain(name: string, keywords: string[]): boolean {
   return keywords.some(kw => lower.includes(kw))
 }
 
+function isNamePending(name: string): boolean {
+  return name.startsWith('Untitled trend') || name.startsWith('Trend: ')
+}
+
+function cleanDisplayName(name: string): string {
+  if (name.startsWith('Untitled trend #')) return 'Emerging trend'
+  return name
+}
+
 interface TrendItem {
   trend_id: string
   display_name: string
@@ -69,25 +78,10 @@ async function getTrends(): Promise<{ trends: TrendItem[]; snapshotTime: string 
   const trendIds = snapshotItems.map(s => s.trend_id)
 
   const [trendsRes, lifecycleRes, oppRes, evidenceRes] = await Promise.all([
-    db
-      .from('detected_trends')
-      .select('id, theme')
-      .in('id', trendIds),
-    db
-      .from('trend_lifecycle_history')
-      .select('trend_id, lifecycle_stage, stage_confidence, current_signals, acceleration_comparable')
-      .eq('snapshot_id', snapshot.id)
-      .in('trend_id', trendIds),
-    db
-      .from('trend_opportunities')
-      .select('trend_id, qualified')
-      .eq('snapshot_id', snapshot.id)
-      .in('trend_id', trendIds),
-    db
-      .from('trend_signals')
-      .select('trend_id, raw_signals!inner(title, source, url, score)')
-      .eq('snapshot_id', snapshot.id)
-      .in('trend_id', trendIds),
+    db.from('detected_trends').select('id, theme').in('id', trendIds),
+    db.from('trend_lifecycle_history').select('trend_id, lifecycle_stage, stage_confidence, current_signals, acceleration_comparable').eq('snapshot_id', snapshot.id).in('trend_id', trendIds),
+    db.from('trend_opportunities').select('trend_id, qualified').eq('snapshot_id', snapshot.id).in('trend_id', trendIds),
+    db.from('trend_signals').select('trend_id, raw_signals!inner(title, source, url, score)').eq('snapshot_id', snapshot.id).in('trend_id', trendIds),
   ])
 
   const trendMap = new Map((trendsRes.data || []).map(t => [t.id, t]))
@@ -107,7 +101,6 @@ async function getTrends(): Promise<{ trends: TrendItem[]; snapshotTime: string 
     evidenceMap.set(tid, sigs.slice(0, 5))
   }
 
-  // Fetch intelligence summaries
   const { data: intelRows } = await db
     .from('trend_intelligence')
     .select('trend_id, summary')
@@ -115,7 +108,6 @@ async function getTrends(): Promise<{ trends: TrendItem[]; snapshotTime: string 
     .in('trend_id', trendIds)
 
   const intelMap = new Map((intelRows || []).map(i => [i.trend_id, i.summary]))
-
   const keywordMap = new Map(snapshotItems.map(s => [s.trend_id, s.trend_keyword]))
 
   const trends: TrendItem[] = snapshotItems
@@ -158,7 +150,7 @@ export default async function ExplorePage({
   const selectedStage = params.stage || 'all'
   const query = params.q?.trim().toLowerCase() || ''
   const showEmpty = params.show_empty === '1'
-  const { trends: allTrends, snapshotTime, snapshotVersion } = await getTrends()
+  const { trends: allTrends, snapshotTime } = await getTrends()
 
   const trends = showEmpty ? allTrends : allTrends.filter(t => t.signal_count > 0 || t.top_signals.length > 0)
   const hiddenCount = allTrends.length - trends.length
@@ -190,9 +182,9 @@ export default async function ExplorePage({
   }
 
   return (
-    <div className="min-h-screen bg-white">
-      <div className="max-w-3xl mx-auto px-6 py-10">
-        <div className="mb-6">
+    <div className="min-h-screen bg-background">
+      <div className="max-w-4xl mx-auto px-6 py-10">
+        <div className="mb-8">
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Explore</h1>
           <p className="text-sm text-slate-500 mt-1">
             {trends.length} trend{trends.length !== 1 ? 's' : ''} tracked across the developer ecosystem
@@ -200,14 +192,13 @@ export default async function ExplorePage({
           {snapshotTime && (
             <p className="text-xs text-slate-400 mt-0.5">
               Last updated {new Date(snapshotTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
-              {snapshotVersion ? ` · ${snapshotVersion}` : ''}
             </p>
           )}
         </div>
 
-        <form action="/explore" method="GET" className="mb-4">
+        <form action="/explore" method="GET" className="mb-5">
           <div className="relative">
-            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
             <input
@@ -215,7 +206,7 @@ export default async function ExplorePage({
               name="q"
               defaultValue={query}
               placeholder="Search trends..."
-              className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition"
+              className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition bg-white"
             />
             {selectedDomain !== 'all' && <input type="hidden" name="domain" value={selectedDomain} />}
             {selectedStage !== 'all' && <input type="hidden" name="stage" value={selectedStage} />}
@@ -236,12 +227,12 @@ export default async function ExplorePage({
                 href={buildFilterUrl({ domain: cat.key })}
                 className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition border ${
                   isActive
-                    ? 'bg-slate-900 text-white border-slate-900'
-                    : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                    ? 'bg-indigo-600 text-white border-indigo-600'
+                    : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-200 hover:bg-indigo-50/50'
                 }`}
               >
                 {cat.label}
-                <span className={`ml-1 text-[10px] ${isActive ? 'text-slate-400' : 'text-slate-400'}`}>
+                <span className={`ml-1 text-[10px] ${isActive ? 'text-indigo-200' : 'text-slate-400'}`}>
                   {count}
                 </span>
               </Link>
@@ -258,8 +249,8 @@ export default async function ExplorePage({
                 href={buildFilterUrl({ stage: sf.key })}
                 className={`shrink-0 px-2.5 py-1 rounded-md text-[11px] font-medium transition border ${
                   isActive
-                    ? 'bg-slate-700 text-white border-slate-700'
-                    : 'bg-white text-slate-500 border-slate-150 hover:border-slate-300 hover:bg-slate-50'
+                    ? 'bg-indigo-700 text-white border-indigo-700'
+                    : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-200 hover:bg-indigo-50/50'
                 }`}
               >
                 {sf.label}
@@ -271,9 +262,9 @@ export default async function ExplorePage({
         {(query || selectedStage !== 'all') && (
           <div className="flex items-center gap-2 mb-4 text-xs text-slate-500">
             <span>{filteredTrends.length} result{filteredTrends.length !== 1 ? 's' : ''}</span>
-            {query && <span className="bg-slate-100 px-2 py-0.5 rounded">&quot;{query}&quot;</span>}
-            {selectedStage !== 'all' && <span className="bg-slate-100 px-2 py-0.5 rounded">{selectedStage}</span>}
-            <Link href={buildFilterUrl({ q: '', stage: 'all', domain: selectedDomain })} className="text-slate-400 hover:text-slate-600 underline">
+            {query && <span className="bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded">&quot;{query}&quot;</span>}
+            {selectedStage !== 'all' && <span className="bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded">{selectedStage}</span>}
+            <Link href={buildFilterUrl({ q: '', stage: 'all', domain: selectedDomain })} className="text-indigo-500 hover:text-indigo-700 underline">
               Clear
             </Link>
           </div>
@@ -282,7 +273,7 @@ export default async function ExplorePage({
         {hiddenCount > 0 && !showEmpty && (
           <div className="flex items-center justify-between mb-4 px-3 py-2 bg-slate-50 rounded-lg text-xs text-slate-500">
             <span>{hiddenCount} trend{hiddenCount !== 1 ? 's' : ''} with no signals hidden</span>
-            <Link href={buildFilterUrl({ show_empty: '1' })} className="text-slate-600 hover:text-slate-900 font-medium underline">
+            <Link href={buildFilterUrl({ show_empty: '1' })} className="text-indigo-600 hover:text-indigo-700 font-medium underline">
               Show all
             </Link>
           </div>
@@ -291,82 +282,93 @@ export default async function ExplorePage({
         {showEmpty && hiddenCount > 0 && (
           <div className="flex items-center justify-between mb-4 px-3 py-2 bg-slate-50 rounded-lg text-xs text-slate-500">
             <span>Showing all {allTrends.length} trends including {hiddenCount} with no signals</span>
-            <Link href={buildFilterUrl({ show_empty: '' })} className="text-slate-600 hover:text-slate-900 font-medium underline">
+            <Link href={buildFilterUrl({ show_empty: '' })} className="text-indigo-600 hover:text-indigo-700 font-medium underline">
               Hide empty
             </Link>
           </div>
         )}
 
         {filteredTrends.length === 0 ? (
-          <div className="border border-slate-200 rounded-xl p-10 text-center">
-            <p className="text-sm text-slate-600 mb-2">
-              {allTrends.length === 0
-                ? 'No snapshot data yet. Run the pipeline or check your connection.'
-                : query
-                ? `No trends matching "${query}".`
-                : selectedDomain !== 'all'
-                ? 'No trends match this category.'
-                : 'No trends match these filters.'}
-            </p>
-            {allTrends.length > 0 && (
-              <p className="text-xs text-slate-400">
-                Try a different search term or clear filters.
-              </p>
+          <div className="rishi-card p-10 text-center">
+            {allTrends.length === 0 ? (
+              <>
+                <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-indigo-50 flex items-center justify-center">
+                  <svg className="w-6 h-6 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <p className="text-sm font-medium text-slate-700 mb-2">No trends detected yet</p>
+                <p className="text-xs text-slate-500 mb-4 max-w-sm mx-auto">
+                  Rishi collects signals daily at 6:00 AM UTC. Trends will appear here after the pipeline processes enough data.
+                </p>
+                <Link href="/method" className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">
+                  Learn how Rishi works
+                </Link>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-slate-600 mb-2">
+                  {query ? `No trends matching "${query}".` : 'No trends match these filters.'}
+                </p>
+                <p className="text-xs text-slate-400">Try a different search term or clear filters.</p>
+              </>
             )}
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {filteredTrends.map((trend) => {
               const stageConfig = trend.stage ? STAGE_CONFIG[trend.stage] : null
               const showStage = stageConfig && trend.comparable && trend.stage_confidence >= 0.5
+              const displayName = cleanDisplayName(trend.display_name)
+              const pending = isNamePending(trend.display_name)
 
               return (
                 <Link
                   key={trend.trend_id}
                   href={`/trends/${trend.trend_id}`}
-                  className="block border border-slate-200 rounded-xl p-4 hover:border-slate-300 hover:bg-slate-50/50 transition group"
+                  className="rishi-card p-4 group flex flex-col"
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <h3 className="text-sm font-semibold text-slate-900 group-hover:text-emerald-600 transition">
-                        {trend.display_name}
+                  <div className="flex items-start justify-between gap-2 mb-1.5">
+                    <div className="min-w-0 flex items-center gap-1.5">
+                      <h3 className="text-sm font-semibold text-slate-900 group-hover:text-indigo-600 transition-colors truncate">
+                        {displayName}
                       </h3>
-                      <div className="flex items-center gap-3 mt-1 text-xs text-slate-400">
-                        <span>{trend.signal_count} signal{trend.signal_count !== 1 ? 's' : ''}</span>
-                        {trend.momentum_score > 0 && (
-                          <span>Momentum {(trend.momentum_score * 100).toFixed(0)}%</span>
-                        )}
-                      </div>
+                      {pending && (
+                        <span className="shrink-0 text-[9px] text-amber-500 bg-amber-50 px-1 py-0.5 rounded border border-amber-100">pending</span>
+                      )}
                     </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
+                    <div className="flex items-center gap-1 shrink-0">
                       {trend.qualified && (
-                        <span className="flex items-center gap-1 text-xs font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                        <span className="flex items-center gap-1 text-[10px] font-medium text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded-full border border-indigo-200">
+                          <span className="w-1 h-1 rounded-full bg-indigo-500" />
                           Qualified
                         </span>
                       )}
-                      {showStage ? (
-                        <Badge variant={stageConfig.variant}>{stageConfig.label}</Badge>
-                      ) : trend.signal_count > 0 ? (
-                        <span className="text-[11px] text-slate-400">Gathering data</span>
-                      ) : null}
+                      {showStage && <Badge variant={stageConfig.variant}>{stageConfig.label}</Badge>}
                     </div>
                   </div>
 
+                  <div className="flex items-center gap-3 text-xs text-slate-400 mb-2">
+                    <span>{trend.signal_count} signal{trend.signal_count !== 1 ? 's' : ''}</span>
+                    {trend.momentum_score > 0 && (
+                      <span>{(trend.momentum_score * 100).toFixed(0)}% momentum</span>
+                    )}
+                  </div>
+
                   {trend.summary && (
-                    <p className="mt-1.5 text-xs text-slate-500 leading-relaxed line-clamp-2">{trend.summary}</p>
+                    <p className="text-xs text-slate-500 leading-relaxed line-clamp-2 mb-2">{trend.summary}</p>
                   )}
 
                   {trend.top_signals.length > 0 && (
-                    <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1">
-                      {trend.top_signals.slice(0, 3).map((sig, i) => (
-                        <div key={i} className="flex items-center gap-1.5 min-w-0">
+                    <div className="mt-auto pt-2 border-t border-slate-50 flex flex-wrap gap-x-3 gap-y-1">
+                      {trend.top_signals.slice(0, 2).map((sig, i) => (
+                        <div key={i} className="flex items-center gap-1 min-w-0">
                           <SourceBadge source={sig.source} />
-                          <span className="text-xs text-slate-500 truncate max-w-[200px]">{sig.title}</span>
+                          <span className="text-[11px] text-slate-400 truncate max-w-36">{sig.title}</span>
                         </div>
                       ))}
-                      {trend.top_signals.length > 3 && (
-                        <span className="text-xs text-slate-400">+{trend.top_signals.length - 3} more</span>
+                      {trend.top_signals.length > 2 && (
+                        <span className="text-[11px] text-slate-300">+{trend.top_signals.length - 2}</span>
                       )}
                     </div>
                   )}
