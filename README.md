@@ -1,7 +1,5 @@
 # TrendSignal
 
-> The repository is named `TrendGenerator`. The product is branded **TrendSignal** in the UI.
-
 TrendSignal is an evidence-gated trend intelligence tool for developers and founders that scrapes developer communities daily, groups signals into trends, qualifies them through deterministic gates, and surfaces actionable build opportunities — with every score auditable and every uncertainty visible.
 
 ---
