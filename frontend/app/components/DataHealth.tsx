@@ -20,11 +20,11 @@ export function DataHealth() {
 
   return (
     <div className="mx-auto max-w-3xl px-6 mb-6">
-      <details open className="border border-amber-300 bg-amber-50 rounded-lg p-4 text-xs font-mono">
-        <summary className="font-semibold text-amber-800 cursor-pointer mb-2">
+      <details open className="border border-amber-800/40 bg-amber-900/20 rounded-lg p-4 text-xs font-mono">
+        <summary className="font-semibold text-amber-400 cursor-pointer mb-2">
           Data Health Diagnostic
         </summary>
-        <pre className="whitespace-pre-wrap text-amber-900 overflow-auto max-h-96">
+        <pre className="whitespace-pre-wrap text-amber-300 overflow-auto max-h-96">
           {JSON.stringify(health, null, 2)}
         </pre>
       </details>

@@ -57,7 +57,7 @@ export function Tooltip({ content, children, position = 'top', maxWidth = 'max-w
           ref={tooltipRef}
           id="tooltip"
           role="tooltip"
-          className={`fixed z-50 px-3 py-2 text-xs leading-relaxed text-slate-100 bg-slate-800 rounded-lg shadow-lg ${maxWidth} transition-opacity duration-150 ${coords ? 'opacity-100' : 'opacity-0'}`}
+          className={`fixed z-50 px-3 py-2 text-xs leading-relaxed text-[var(--text-primary)] bg-[var(--surface)] border border-[var(--border)] rounded-lg shadow-lg ${maxWidth} transition-opacity duration-150 ${coords ? 'opacity-100' : 'opacity-0'}`}
           style={coords ? { top: coords.top, left: coords.left } : { top: -9999, left: -9999 }}
         >
           {content}
