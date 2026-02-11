@@ -10,13 +10,13 @@ function NavLink({ href, children, active }: { href: string; children: React.Rea
       href={href}
       className={`text-sm font-medium transition-colors relative py-1 ${
         active
-          ? 'text-indigo-600'
-          : 'text-slate-500 hover:text-slate-900'
+          ? 'text-[var(--text-accent)]'
+          : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)]'
       }`}
     >
       {children}
       {active && (
-        <span className="absolute -bottom-4.25 left-0 right-0 h-0.5 bg-indigo-600 rounded-full" />
+        <span className="absolute -bottom-4.25 left-0 right-0 h-0.5 bg-[var(--accent)] rounded-full" />
       )}
     </Link>
   )
@@ -32,7 +32,7 @@ export function Nav() {
   if (pathname === '/sign-up' || pathname === '/sign-in') return null
 
   return (
-    <nav className="border-b border-slate-200/80 bg-white/95 backdrop-blur-sm sticky top-0 z-50">
+    <nav className="border-b border-[var(--border)] bg-[var(--bg-0)]/80 backdrop-blur-xl sticky top-0 z-50">
       <div className="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
         <Link href={isLoggedIn ? '/overview' : '/'} className="flex items-center gap-2">
           <span className="text-base font-bold tracking-tight rishi-gradient-text">Rishi</span>
@@ -50,7 +50,7 @@ export function Nav() {
                 await signOut()
                 router.push('/')
               }}
-              className="text-sm text-slate-400 hover:text-slate-600 transition-colors ml-2"
+              className="text-sm text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors ml-2"
             >
               Sign out
             </button>
@@ -59,7 +59,7 @@ export function Nav() {
           <div className="flex items-center gap-5">
             <Link
               href="/sign-in"
-              className="text-sm text-slate-600 hover:text-slate-900 font-medium transition-colors"
+              className="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] font-medium transition-colors"
             >
               Sign in
             </Link>

@@ -194,7 +194,6 @@ async function getTrendData(id: string): Promise<TrendData | null> {
     }
   }
 
-  // Fetch intelligence
   let intelligence: IntelligenceData | null = null
   if (snapshot) {
     const { data: intelRow } = await supabase
@@ -273,26 +272,26 @@ async function getTrendData(id: string): Promise<TrendData | null> {
 }
 
 const TIMING_CONFIG: Record<string, { text: string; color: string; description: string }> = {
-  too_early: { text: 'Too Early', color: 'bg-blue-100 text-blue-700', description: 'Not enough data to act yet' },
-  early_edge: { text: 'Early Edge', color: 'bg-emerald-100 text-emerald-700', description: 'Good window to enter before the crowd' },
-  crowded: { text: 'Crowded', color: 'bg-amber-100 text-amber-700', description: 'Many players already building here' },
-  late_but_monetizable: { text: 'Late but Monetizable', color: 'bg-yellow-100 text-yellow-700', description: 'Saturating, but revenue paths remain' },
-  timing_uncertain: { text: 'Uncertain', color: 'bg-gray-100 text-gray-600', description: 'Insufficient data for timing classification' }
+  too_early: { text: 'Too Early', color: 'bg-blue-900/30 text-blue-400', description: 'Not enough data to act yet' },
+  early_edge: { text: 'Early Edge', color: 'bg-emerald-900/30 text-emerald-400', description: 'Good window to enter before the crowd' },
+  crowded: { text: 'Crowded', color: 'bg-amber-900/30 text-amber-400', description: 'Many players already building here' },
+  late_but_monetizable: { text: 'Late but Monetizable', color: 'bg-yellow-900/30 text-yellow-400', description: 'Saturating, but revenue paths remain' },
+  timing_uncertain: { text: 'Uncertain', color: 'bg-[var(--surface)] text-[var(--text-secondary)]', description: 'Insufficient data for timing classification' }
 }
 
 const COMPETITION_CONFIG: Record<string, { text: string; color: string; description: string }> = {
-  low: { text: 'Low competition', color: 'bg-emerald-100 text-emerald-700', description: 'Few established players' },
-  moderate: { text: 'Moderate competition', color: 'bg-yellow-100 text-yellow-700', description: 'Some competition exists' },
-  high: { text: 'High competition', color: 'bg-red-100 text-red-700', description: 'Many players building here' },
-  uncertain: { text: 'Unknown', color: 'bg-gray-100 text-gray-600', description: 'Not enough data to assess' }
+  low: { text: 'Low competition', color: 'bg-emerald-900/30 text-emerald-400', description: 'Few established players' },
+  moderate: { text: 'Moderate competition', color: 'bg-yellow-900/30 text-yellow-400', description: 'Some competition exists' },
+  high: { text: 'High competition', color: 'bg-red-900/30 text-red-400', description: 'Many players building here' },
+  uncertain: { text: 'Unknown', color: 'bg-[var(--surface)] text-[var(--text-secondary)]', description: 'Not enough data to assess' }
 }
 
 const STAGE_CONFIG: Record<string, { label: string; color: string }> = {
-  emerging: { label: 'Emerging', color: 'bg-blue-100 text-blue-700' },
-  rising: { label: 'Rising', color: 'bg-green-100 text-green-700' },
-  peaking: { label: 'Peaking', color: 'bg-yellow-100 text-yellow-700' },
-  stable: { label: 'Stable', color: 'bg-gray-100 text-gray-700' },
-  declining: { label: 'Declining', color: 'bg-red-100 text-red-700' }
+  emerging: { label: 'Emerging', color: 'bg-blue-900/30 text-blue-400' },
+  rising: { label: 'Rising', color: 'bg-green-900/30 text-green-400' },
+  peaking: { label: 'Peaking', color: 'bg-yellow-900/30 text-yellow-400' },
+  stable: { label: 'Stable', color: 'bg-[var(--surface)] text-[var(--text-secondary)]' },
+  declining: { label: 'Declining', color: 'bg-red-900/30 text-red-400' }
 }
 
 const STAGES_ORDER = ['emerging', 'rising', 'peaking', 'stable', 'declining']
@@ -311,7 +310,7 @@ function getDateRange(start: string, end: string): string[] {
 function MomentumChart({ trajectory }: { trajectory: TrajectoryPoint[] }) {
   if (trajectory.length === 0) {
     return (
-      <div className="h-48 flex items-center justify-center text-gray-400 text-sm">
+      <div className="h-48 flex items-center justify-center text-[var(--text-tertiary)] text-sm">
         No trajectory data yet
       </div>
     )
@@ -321,10 +320,10 @@ function MomentumChart({ trajectory }: { trajectory: TrajectoryPoint[] }) {
   if (timestamps.length < 2) {
     const point = trajectory[0]
     return (
-      <div className="h-48 flex flex-col items-center justify-center text-gray-400 text-sm gap-1">
+      <div className="h-48 flex flex-col items-center justify-center text-[var(--text-tertiary)] text-sm gap-1">
         <span>Single data point collected</span>
         {point?.momentum !== null && point?.momentum !== undefined && (
-          <span className="text-gray-500 font-medium">Momentum: {point.momentum.toFixed(2)}</span>
+          <span className="text-[var(--text-secondary)] font-medium">Momentum: {point.momentum.toFixed(2)}</span>
         )}
         <span className="text-xs">More data points will appear after the next pipeline run.</span>
       </div>
@@ -389,36 +388,36 @@ function MomentumChart({ trajectory }: { trajectory: TrajectoryPoint[] }) {
   return (
     <div className="h-48 relative">
       {gapCount > 0 && (
-        <div className="absolute top-0 left-0 text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded">
+        <div className="absolute top-0 left-0 text-xs text-amber-400 bg-amber-900/20 px-2 py-1 rounded">
           {gapCount} missing day{gapCount !== 1 ? 's' : ''}
         </div>
       )}
       <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full" preserveAspectRatio="none">
         {segments.map((seg, i) => (
-          <polyline key={i} fill="none" stroke="#4f46e5" strokeWidth="0.5" points={seg.points} />
+          <polyline key={i} fill="none" stroke="#818CF8" strokeWidth="0.5" points={seg.points} />
         ))}
         {filledData.map((d, i) => {
           if (!d.hasData || !d.point) return null
           const x = padding + (i / (filledData.length - 1 || 1)) * (width - 2 * padding)
           const y = height - padding - ((d.point.momentum || 0) - minMomentum) / range * (height - 2 * padding)
           return (
-            <circle key={i} cx={x} cy={y} r={d.point.qualified ? 1.5 : 0.8} fill={d.point.qualified ? '#4f46e5' : '#9ca3af'} />
+            <circle key={i} cx={x} cy={y} r={d.point.qualified ? 1.5 : 0.8} fill={d.point.qualified ? '#818CF8' : '#5C6478'} />
           )
         })}
       </svg>
-      <div className="absolute top-0 right-0 text-xs text-gray-400">{maxMomentum.toFixed(2)}</div>
-      <div className="absolute bottom-0 right-0 text-xs text-gray-400">{minMomentum.toFixed(2)}</div>
+      <div className="absolute top-0 right-0 text-xs text-[var(--text-tertiary)]">{maxMomentum.toFixed(2)}</div>
+      <div className="absolute bottom-0 right-0 text-xs text-[var(--text-tertiary)]">{minMomentum.toFixed(2)}</div>
     </div>
   )
 }
 
 function StageTimeline({ trajectory }: { trajectory: TrajectoryPoint[] }) {
   const stageColors: Record<string, string> = {
-    emerging: 'bg-blue-100 text-blue-700',
-    rising: 'bg-green-100 text-green-700',
-    peaking: 'bg-yellow-100 text-yellow-700',
-    stable: 'bg-gray-100 text-gray-700',
-    declining: 'bg-red-100 text-red-700'
+    emerging: 'bg-blue-900/30 text-blue-400',
+    rising: 'bg-green-900/30 text-green-400',
+    peaking: 'bg-yellow-900/30 text-yellow-400',
+    stable: 'bg-[var(--surface)] text-[var(--text-secondary)]',
+    declining: 'bg-red-900/30 text-red-400'
   }
 
   const stages: { stage: string; count: number }[] = []
@@ -433,7 +432,7 @@ function StageTimeline({ trajectory }: { trajectory: TrajectoryPoint[] }) {
   }
 
   if (stages.length === 0) {
-    return <div className="text-gray-400 text-sm">No stage data</div>
+    return <div className="text-[var(--text-tertiary)] text-sm">No stage data</div>
   }
 
   const total = trajectory.length
@@ -443,7 +442,7 @@ function StageTimeline({ trajectory }: { trajectory: TrajectoryPoint[] }) {
       {stages.map((s, i) => (
         <div
           key={i}
-          className={`${stageColors[s.stage] || 'bg-gray-100 text-gray-700'} flex items-center justify-center text-xs font-medium`}
+          className={`${stageColors[s.stage] || 'bg-[var(--surface)] text-[var(--text-secondary)]'} flex items-center justify-center text-xs font-medium`}
           style={{ width: `${(s.count / total) * 100}%` }}
           title={`${s.stage}: ${s.count} snapshots`}
         >
@@ -499,24 +498,24 @@ export default async function TrendDetailPage({
   const signalGroups = groupSignalsBySource(trend.signals)
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-[var(--bg-0)]">
       <div className="max-w-3xl mx-auto px-6 py-10">
         <div className="flex items-center gap-3 mb-6 text-sm">
-          <Link href="/for-you" className="text-slate-400 hover:text-indigo-600 transition">For You</Link>
-          <span className="text-slate-300">/</span>
-          <Link href="/explore" className="text-slate-400 hover:text-indigo-600 transition">Explore</Link>
+          <Link href="/for-you" className="text-[var(--text-tertiary)] hover:text-[var(--text-accent)] transition">For You</Link>
+          <span className="text-[var(--text-tertiary)]">/</span>
+          <Link href="/explore" className="text-[var(--text-tertiary)] hover:text-[var(--text-accent)] transition">Explore</Link>
         </div>
 
-        <h1 className="text-2xl font-semibold text-slate-900 tracking-tight mb-2">
+        <h1 className="text-2xl font-semibold text-[var(--text-primary)] tracking-tight mb-2">
           {trend.theme}
         </h1>
 
         <div className="flex items-center gap-2 flex-wrap mb-4">
           {trend.hypothesis && (
             <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
-              trend.hypothesis.hypothesis_status === 'valid' ? 'bg-indigo-50 text-indigo-600'
-              : trend.hypothesis.hypothesis_status === 'topic_only' ? 'bg-slate-100 text-slate-500'
-              : 'bg-amber-50 text-amber-600'
+              trend.hypothesis.hypothesis_status === 'valid' ? 'bg-[var(--accent-subtle)] text-[var(--text-accent)]'
+              : trend.hypothesis.hypothesis_status === 'topic_only' ? 'bg-[var(--surface)] text-[var(--text-secondary)]'
+              : 'bg-amber-900/20 text-amber-400'
             }`}>
               {trend.hypothesis.hypothesis_status === 'valid' ? 'Valid hypothesis'
               : trend.hypothesis.hypothesis_status === 'topic_only' ? 'Topic only'
@@ -539,14 +538,14 @@ export default async function TrendDetailPage({
             </span>
           )}
           {isSingleSnapshot && (
-            <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-600">
+            <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-amber-900/20 text-amber-400">
               New — 1 snapshot
             </span>
           )}
         </div>
 
         {narrativeParts.length > 0 && (
-          <p className="text-sm text-slate-500 leading-relaxed mb-6 max-w-2xl">
+          <p className="text-sm text-[var(--text-secondary)] leading-relaxed mb-6 max-w-2xl">
             {narrativeParts.join(' ')}
           </p>
         )}
@@ -555,17 +554,17 @@ export default async function TrendDetailPage({
           <div className="mb-10 space-y-5">
             {trend.hypothesis.hypothesis_summary && (
               <div>
-                <h2 className="text-lg font-semibold text-slate-900 mb-2">Problem hypothesis</h2>
-                <p className="text-sm text-slate-600 leading-relaxed">{trend.hypothesis.hypothesis_summary}</p>
+                <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-2">Problem hypothesis</h2>
+                <p className="text-sm text-[var(--text-secondary)] leading-relaxed">{trend.hypothesis.hypothesis_summary}</p>
               </div>
             )}
 
             {trend.hypothesis.who_it_affects.length > 0 && (
               <div>
-                <h2 className="text-sm font-semibold text-slate-700 mb-1.5">Who it affects</h2>
+                <h2 className="text-sm font-semibold text-[var(--text-secondary)] mb-1.5">Who it affects</h2>
                 <div className="flex flex-wrap gap-2">
                   {trend.hypothesis.who_it_affects.map((persona, i) => (
-                    <span key={i} className="text-xs text-slate-600 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-100">
+                    <span key={i} className="text-xs text-[var(--text-secondary)] bg-[var(--surface)] px-2.5 py-1 rounded-lg border border-[var(--border)]">
                       {persona}
                     </span>
                   ))}
@@ -575,11 +574,11 @@ export default async function TrendDetailPage({
 
             {trend.hypothesis.pain_signals.length > 0 && (
               <div>
-                <h2 className="text-sm font-semibold text-slate-700 mb-1.5">Pain signals</h2>
+                <h2 className="text-sm font-semibold text-[var(--text-secondary)] mb-1.5">Pain signals</h2>
                 <ul className="space-y-1">
                   {trend.hypothesis.pain_signals.map((pain, i) => (
-                    <li key={i} className="text-sm text-slate-600 flex gap-2">
-                      <span className="text-indigo-400 shrink-0">&bull;</span>
+                    <li key={i} className="text-sm text-[var(--text-secondary)] flex gap-2">
+                      <span className="text-[var(--accent-muted)] shrink-0">&bull;</span>
                       <span>{pain}</span>
                     </li>
                   ))}
@@ -589,13 +588,13 @@ export default async function TrendDetailPage({
 
             {trend.hypothesis.demand_evidence.length > 0 && (
               <div>
-                <h2 className="text-sm font-semibold text-slate-700 mb-1.5">Demand evidence</h2>
+                <h2 className="text-sm font-semibold text-[var(--text-secondary)] mb-1.5">Demand evidence</h2>
                 <ul className="space-y-1">
                   {trend.hypothesis.demand_evidence.map((d, i) => (
-                    <li key={i} className="text-xs text-slate-500">
-                      <span className="text-slate-400">[{d.source}]</span>{' '}
+                    <li key={i} className="text-xs text-[var(--text-secondary)]">
+                      <span className="text-[var(--text-tertiary)]">[{d.source}]</span>{' '}
                       {d.url ? (
-                        <a href={d.url} target="_blank" rel="noopener noreferrer" className="hover:text-indigo-600 transition-colors">
+                        <a href={d.url} target="_blank" rel="noopener noreferrer" className="hover:text-[var(--text-accent)] transition-colors">
                           {d.title}
                         </a>
                       ) : d.title}
@@ -606,7 +605,7 @@ export default async function TrendDetailPage({
             )}
 
             {trend.hypothesis.confidence > 0 && (
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-[var(--text-tertiary)]">
                 Hypothesis confidence: {Math.round(trend.hypothesis.confidence * 100)}%
               </p>
             )}
@@ -617,24 +616,24 @@ export default async function TrendDetailPage({
           <div className="mb-10 space-y-6">
             {trend.intelligence.summary && (
               <div>
-                <h2 className="text-lg font-semibold text-slate-900 mb-2">Summary</h2>
-                <p className="text-sm text-slate-600 leading-relaxed">{trend.intelligence.summary}</p>
+                <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-2">Summary</h2>
+                <p className="text-sm text-[var(--text-secondary)] leading-relaxed">{trend.intelligence.summary}</p>
               </div>
             )}
 
             {trend.intelligence.build_ideas.length > 0 && (
               <div>
-                <h2 className="text-lg font-semibold text-slate-900 mb-2">What to build</h2>
+                <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-2">What to build</h2>
                 <div className="space-y-2">
                   {trend.intelligence.build_ideas.map((idea, i) => (
-                    <div key={i} className="border border-slate-100 rounded-lg p-3">
-                      <p className="text-sm font-medium text-slate-800">{idea.idea}</p>
+                    <div key={i} className="border border-[var(--border)] rounded-lg p-3">
+                      <p className="text-sm font-medium text-[var(--text-primary)]">{idea.idea}</p>
                       <div className="flex items-center gap-3 mt-1">
                         {idea.effort && (
-                          <span className="text-[11px] text-slate-400 bg-slate-50 px-2 py-0.5 rounded">{idea.effort}</span>
+                          <span className="text-[11px] text-[var(--text-tertiary)] bg-[var(--surface)] px-2 py-0.5 rounded">{idea.effort}</span>
                         )}
                         {idea.audience && (
-                          <span className="text-[11px] text-slate-400">{idea.audience}</span>
+                          <span className="text-[11px] text-[var(--text-tertiary)]">{idea.audience}</span>
                         )}
                       </div>
                     </div>
@@ -645,12 +644,12 @@ export default async function TrendDetailPage({
 
             {trend.intelligence.existing_solutions.length > 0 && (
               <div>
-                <h2 className="text-lg font-semibold text-slate-900 mb-2">Existing solutions</h2>
+                <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-2">Existing solutions</h2>
                 <div className="space-y-1.5">
                   {trend.intelligence.existing_solutions.map((sol, i) => (
                     <div key={i} className="text-sm">
-                      <span className="font-medium text-slate-700">{sol.name}</span>
-                      {sol.gap && <span className="text-slate-400"> — {sol.gap}</span>}
+                      <span className="font-medium text-[var(--text-secondary)]">{sol.name}</span>
+                      {sol.gap && <span className="text-[var(--text-tertiary)]"> — {sol.gap}</span>}
                     </div>
                   ))}
                 </div>
@@ -659,11 +658,11 @@ export default async function TrendDetailPage({
 
             {trend.intelligence.risks.length > 0 && (
               <div>
-                <h2 className="text-lg font-semibold text-slate-900 mb-2">Risks</h2>
+                <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-2">Risks</h2>
                 <ul className="space-y-1">
                   {trend.intelligence.risks.map((risk, i) => (
-                    <li key={i} className="text-sm text-slate-600 flex gap-2">
-                      <span className="text-slate-300 shrink-0">-</span>
+                    <li key={i} className="text-sm text-[var(--text-secondary)] flex gap-2">
+                      <span className="text-[var(--text-tertiary)] shrink-0">-</span>
                       <span>{risk}</span>
                     </li>
                   ))}
@@ -674,18 +673,18 @@ export default async function TrendDetailPage({
         )}
 
         {trend.opportunity && trend.opportunity.qualified && (
-          <div className="mb-10 p-5 bg-indigo-50 border border-indigo-200 rounded-xl">
+          <div className="mb-10 p-5 bg-[var(--accent-subtle)] border border-[var(--border-accent)] rounded-xl">
             <div className="flex items-center gap-2 mb-3">
-              <span className="w-2 h-2 rounded-full bg-indigo-500" />
-              <span className="text-sm font-semibold text-indigo-800">Qualified opportunity</span>
+              <span className="w-2 h-2 rounded-full bg-[var(--accent)]" />
+              <span className="text-sm font-semibold text-[var(--text-accent)]">Qualified opportunity</span>
             </div>
-            <h3 className="text-base font-semibold text-slate-900 mb-2">{trend.opportunity.action_title}</h3>
+            <h3 className="text-base font-semibold text-[var(--text-primary)] mb-2">{trend.opportunity.action_title}</h3>
             {trend.opportunity.why_now && (
-              <p className="text-sm text-slate-600 mb-3">{trend.opportunity.why_now}</p>
+              <p className="text-sm text-[var(--text-secondary)] mb-3">{trend.opportunity.why_now}</p>
             )}
             {trend.opportunity.suggested_actions && (
               <div>
-                <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1.5">What to build</p>
+                <p className="text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wide mb-1.5">What to build</p>
                 <ul className="space-y-1">
                   {(Array.isArray(trend.opportunity.suggested_actions)
                     ? trend.opportunity.suggested_actions
@@ -693,8 +692,8 @@ export default async function TrendDetailPage({
                     ? (() => { try { return JSON.parse(trend.opportunity.suggested_actions as string) } catch { return (trend.opportunity.suggested_actions as string).split('\n').filter(Boolean) } })()
                     : []
                   ).slice(0, 3).map((action: string, i: number) => (
-                    <li key={i} className="text-sm text-slate-700 flex gap-2">
-                      <span className="text-slate-400 shrink-0">-</span>
+                    <li key={i} className="text-sm text-[var(--text-secondary)] flex gap-2">
+                      <span className="text-[var(--text-tertiary)] shrink-0">-</span>
                       <span>{action}</span>
                     </li>
                   ))}
@@ -705,15 +704,15 @@ export default async function TrendDetailPage({
         )}
 
         {trend.opportunity && !trend.opportunity.qualified && (
-          <div className="mb-10 p-5 bg-slate-50 border border-slate-200 rounded-xl">
+          <div className="mb-10 p-5 bg-[var(--surface)] border border-[var(--border)] rounded-xl">
             <div className="flex items-center gap-2 mb-2">
-              <span className="w-2 h-2 rounded-full bg-amber-400" />
-              <span className="text-sm font-semibold text-slate-700">Not qualified yet</span>
+              <span className="w-2 h-2 rounded-full bg-amber-500" />
+              <span className="text-sm font-semibold text-[var(--text-secondary)]">Not qualified yet</span>
             </div>
-            <p className="text-sm text-slate-500 mb-2">
+            <p className="text-sm text-[var(--text-secondary)] mb-2">
               This trend hasn&apos;t passed all evidence gates yet.
             </p>
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-[var(--text-tertiary)]">
               To qualify, a trend needs 2+ independent evidence sources, a buildable action, and sufficient lifecycle confidence.
             </p>
           </div>
@@ -721,13 +720,13 @@ export default async function TrendDetailPage({
 
         {trend.signals.length > 0 && (
           <div className="mb-10">
-            <h2 className="text-lg font-semibold text-slate-900 mb-4">Evidence</h2>
+            <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-4">Evidence</h2>
             <div className="space-y-5">
               {signalGroups.map((group) => (
                 <div key={group.source}>
                   <div className="flex items-center gap-2 mb-2">
                     <SourceBadge source={group.source} />
-                    <span className="text-xs text-slate-400">{group.items.length} signal{group.items.length !== 1 ? 's' : ''}</span>
+                    <span className="text-xs text-[var(--text-tertiary)]">{group.items.length} signal{group.items.length !== 1 ? 's' : ''}</span>
                   </div>
                   <div className="space-y-1.5 pl-1">
                     {group.items.map((sig, i) => (
@@ -737,12 +736,12 @@ export default async function TrendDetailPage({
                             href={sig.url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-sm text-slate-700 hover:text-indigo-600 transition"
+                            className="text-sm text-[var(--text-secondary)] hover:text-[var(--text-accent)] transition"
                           >
                             {sig.title}
                           </a>
                         ) : (
-                          <span className="text-sm text-slate-700">{sig.title}</span>
+                          <span className="text-sm text-[var(--text-secondary)]">{sig.title}</span>
                         )}
                       </div>
                     ))}
@@ -754,38 +753,38 @@ export default async function TrendDetailPage({
         )}
 
         {trend.signals.length === 0 && (
-          <div className="mb-10 border border-slate-100 rounded-lg p-6 text-center">
-            <p className="text-sm text-slate-500">No evidence signals collected yet.</p>
-            <p className="text-xs text-slate-400 mt-1">Signals will appear after the next pipeline run.</p>
+          <div className="mb-10 border border-[var(--border)] rounded-lg p-6 text-center">
+            <p className="text-sm text-[var(--text-secondary)]">No evidence signals collected yet.</p>
+            <p className="text-xs text-[var(--text-tertiary)] mt-1">Signals will appear after the next pipeline run.</p>
           </div>
         )}
 
-        <details className="border border-slate-200 rounded-xl mb-8">
-          <summary className="px-5 py-4 cursor-pointer text-sm font-semibold text-slate-700 hover:text-slate-900 transition">
+        <details className="border border-[var(--border)] rounded-xl mb-8">
+          <summary className="px-5 py-4 cursor-pointer text-sm font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition">
             Detailed analytics
           </summary>
-          <div className="px-5 pb-6 pt-2 border-t border-slate-100">
+          <div className="px-5 pb-6 pt-2 border-t border-[var(--border)]">
             {latestPoint && (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-                <div className="border border-gray-200 rounded-lg p-3">
-                  <div className="text-xs text-gray-500 mb-1">Current Momentum</div>
-                  <div className="text-xl font-bold text-gray-900">
+                <div className="border border-[var(--border)] rounded-lg p-3">
+                  <div className="text-xs text-[var(--text-secondary)] mb-1">Current Momentum</div>
+                  <div className="text-xl font-bold text-[var(--text-primary)]">
                     {latestPoint.momentum?.toFixed(2) || '\u2014'}
                   </div>
                 </div>
-                <div className="border border-gray-200 rounded-lg p-3">
-                  <div className="text-xs text-gray-500 mb-1">Peak Momentum</div>
-                  <div className="text-xl font-bold text-gray-900">
+                <div className="border border-[var(--border)] rounded-lg p-3">
+                  <div className="text-xs text-[var(--text-secondary)] mb-1">Peak Momentum</div>
+                  <div className="text-xl font-bold text-[var(--text-primary)]">
                     {trend.peak_momentum?.toFixed(2) || '\u2014'}
                   </div>
                 </div>
-                <div className="border border-gray-200 rounded-lg p-3">
-                  <div className="text-xs text-gray-500 mb-1">Times Qualified</div>
-                  <div className="text-xl font-bold text-gray-900">{trend.qualified_count}</div>
+                <div className="border border-[var(--border)] rounded-lg p-3">
+                  <div className="text-xs text-[var(--text-secondary)] mb-1">Times Qualified</div>
+                  <div className="text-xl font-bold text-[var(--text-primary)]">{trend.qualified_count}</div>
                 </div>
-                <div className="border border-gray-200 rounded-lg p-3">
-                  <div className="text-xs text-gray-500 mb-1">Current Signals</div>
-                  <div className="text-xl font-bold text-gray-900">
+                <div className="border border-[var(--border)] rounded-lg p-3">
+                  <div className="text-xs text-[var(--text-secondary)] mb-1">Current Signals</div>
+                  <div className="text-xl font-bold text-[var(--text-primary)]">
                     {latestPoint.signal_count || '\u2014'}
                   </div>
                 </div>
@@ -793,7 +792,7 @@ export default async function TrendDetailPage({
             )}
 
             {!latestPoint && (
-              <div className="mb-8 p-4 bg-slate-50 rounded-lg text-sm text-slate-500 text-center">
+              <div className="mb-8 p-4 bg-[var(--surface)] rounded-lg text-sm text-[var(--text-secondary)] text-center">
                 No snapshot data available yet. Analytics will appear after the pipeline processes this trend.
               </div>
             )}
@@ -801,11 +800,11 @@ export default async function TrendDetailPage({
             {latestPoint && (
               <>
                 <div className="mb-8">
-                  <h3 className="text-sm font-semibold text-gray-700 mb-3">Momentum Over Time</h3>
-                  <div className="border border-gray-200 rounded-lg p-4">
+                  <h3 className="text-sm font-semibold text-[var(--text-secondary)] mb-3">Momentum Over Time</h3>
+                  <div className="border border-[var(--border)] rounded-lg p-4">
                     <MomentumChart trajectory={trend.trajectory} />
                     {trend.trajectory.length >= 2 && (
-                      <div className="flex justify-between text-xs text-gray-400 mt-2">
+                      <div className="flex justify-between text-xs text-[var(--text-tertiary)] mt-2">
                         <span>
                           {trend.trajectory[0]?.timestamp
                             ? new Date(trend.trajectory[0].timestamp).toLocaleDateString()
@@ -822,13 +821,13 @@ export default async function TrendDetailPage({
                 </div>
 
                 <div className="mb-8">
-                  <h3 className="text-sm font-semibold text-gray-700 mb-3">Lifecycle Stages</h3>
-                  <div className="border border-gray-200 rounded-lg p-4">
+                  <h3 className="text-sm font-semibold text-[var(--text-secondary)] mb-3">Lifecycle Stages</h3>
+                  <div className="border border-[var(--border)] rounded-lg p-4">
                     <StageTimeline trajectory={trend.trajectory} />
                     <div className="flex gap-4 mt-3 text-xs">
                       {STAGES_ORDER.map(stage => (
                         <span key={stage} className="flex items-center gap-1">
-                          <span className={`w-3 h-3 rounded ${STAGE_CONFIG[stage]?.color.split(' ')[0] || 'bg-gray-100'}`}></span>
+                          <span className={`w-3 h-3 rounded ${STAGE_CONFIG[stage]?.color.split(' ')[0] || 'bg-[var(--surface)]'}`}></span>
                           {STAGE_CONFIG[stage]?.label || stage}
                         </span>
                       ))}
@@ -837,34 +836,34 @@ export default async function TrendDetailPage({
                 </div>
 
                 <div>
-                  <h3 className="text-sm font-semibold text-gray-700 mb-3">Snapshot History</h3>
-                  <div className="border border-gray-200 rounded-lg overflow-hidden">
+                  <h3 className="text-sm font-semibold text-[var(--text-secondary)] mb-3">Snapshot History</h3>
+                  <div className="border border-[var(--border)] rounded-lg overflow-hidden">
                     <table className="w-full text-sm">
-                      <thead className="bg-gray-50">
+                      <thead className="bg-[var(--surface)]">
                         <tr>
-                          <th className="px-4 py-2.5 text-left text-gray-600 font-medium text-xs">Date</th>
-                          <th className="px-4 py-2.5 text-left text-gray-600 font-medium text-xs">Momentum</th>
-                          <th className="px-4 py-2.5 text-left text-gray-600 font-medium text-xs">Signals</th>
-                          <th className="px-4 py-2.5 text-left text-gray-600 font-medium text-xs">Stage</th>
-                          <th className="px-4 py-2.5 text-left text-gray-600 font-medium text-xs">Qualified</th>
+                          <th className="px-4 py-2.5 text-left text-[var(--text-secondary)] font-medium text-xs">Date</th>
+                          <th className="px-4 py-2.5 text-left text-[var(--text-secondary)] font-medium text-xs">Momentum</th>
+                          <th className="px-4 py-2.5 text-left text-[var(--text-secondary)] font-medium text-xs">Signals</th>
+                          <th className="px-4 py-2.5 text-left text-[var(--text-secondary)] font-medium text-xs">Stage</th>
+                          <th className="px-4 py-2.5 text-left text-[var(--text-secondary)] font-medium text-xs">Qualified</th>
                         </tr>
                       </thead>
                       <tbody>
                         {[...trend.trajectory].reverse().slice(0, 10).map((point, i) => (
-                          <tr key={i} className="border-t border-gray-100">
-                            <td className="px-4 py-2.5 text-gray-900 text-xs">
+                          <tr key={i} className="border-t border-[var(--border)]">
+                            <td className="px-4 py-2.5 text-[var(--text-primary)] text-xs">
                               {point.timestamp ? new Date(point.timestamp).toLocaleDateString() : '\u2014'}
                             </td>
-                            <td className="px-4 py-2.5 text-gray-900 text-xs tabular-nums">
+                            <td className="px-4 py-2.5 text-[var(--text-primary)] text-xs tabular-nums">
                               {point.momentum?.toFixed(3) || '\u2014'}
                             </td>
-                            <td className="px-4 py-2.5 text-gray-900 text-xs">
+                            <td className="px-4 py-2.5 text-[var(--text-primary)] text-xs">
                               {point.signal_count || '\u2014'}
                             </td>
                             <td className="px-4 py-2.5">
                               {point.stage && (
                                 <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${
-                                  STAGE_CONFIG[point.stage]?.color || 'bg-gray-100 text-gray-700'
+                                  STAGE_CONFIG[point.stage]?.color || 'bg-[var(--surface)] text-[var(--text-secondary)]'
                                 }`}>
                                   {point.stage}
                                 </span>
@@ -872,9 +871,9 @@ export default async function TrendDetailPage({
                             </td>
                             <td className="px-4 py-2.5">
                               {point.qualified ? (
-                                <span className="text-indigo-600 text-xs">Yes</span>
+                                <span className="text-[var(--text-accent)] text-xs">Yes</span>
                               ) : (
-                                <span className="text-gray-300 text-xs">{'\u2014'}</span>
+                                <span className="text-[var(--text-tertiary)] text-xs">{'\u2014'}</span>
                               )}
                             </td>
                           </tr>
@@ -898,9 +897,9 @@ export default async function TrendDetailPage({
           ...(trend.competition ? ['competition'] : []),
         ]} />
 
-        <div className="text-xs text-gray-400 mt-6">
+        <div className="text-xs text-[var(--text-tertiary)] mt-6">
           <details>
-            <summary className="cursor-pointer hover:text-gray-600">System info</summary>
+            <summary className="cursor-pointer hover:text-[var(--text-secondary)]">System info</summary>
             <div className="mt-2 space-y-1">
               <p>Scoring: norm-p90-decay7d-v1</p>
               <p>Lifecycle: lifecycle-v1</p>

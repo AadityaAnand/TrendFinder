@@ -64,13 +64,13 @@ export default async function OverviewPage() {
     : null
 
   return (
-    <div className="min-h-screen bg-[var(--background)]">
+    <div className="min-h-screen bg-[var(--bg-0)]">
       <div className="max-w-3xl mx-auto px-6 py-12">
         <div className="mb-10">
-          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">
+          <h1 className="text-3xl font-bold text-[var(--text-primary)] tracking-tight">
             Welcome to <span className="rishi-gradient-text">Rishi</span>
           </h1>
-          <p className="text-base text-slate-500 mt-2 max-w-2xl leading-relaxed">
+          <p className="text-base text-[var(--text-secondary)] mt-2 max-w-2xl leading-relaxed">
             Your evidence-based foresight engine. Rishi watches developer signals across
             Hacker News, GitHub, Dev.to, and Reddit &mdash; then surfaces what&apos;s actionable.
           </p>
@@ -78,26 +78,26 @@ export default async function OverviewPage() {
 
         <div className="grid grid-cols-3 gap-4 mb-8">
           <div className="rishi-card p-4">
-            <div className="text-2xl font-bold text-slate-900">{trendCount}</div>
-            <div className="text-xs text-slate-500 mt-0.5">Trends tracked</div>
+            <div className="text-2xl font-bold text-[var(--text-primary)]">{trendCount}</div>
+            <div className="text-xs text-[var(--text-secondary)] mt-0.5">Trends tracked</div>
           </div>
           <div className="rishi-card p-4">
-            <div className="text-2xl font-bold text-indigo-600">{qualifiedCount}</div>
-            <div className="text-xs text-slate-500 mt-0.5">Qualified opportunities</div>
+            <div className="text-2xl font-bold text-[var(--text-accent)]">{qualifiedCount}</div>
+            <div className="text-xs text-[var(--text-secondary)] mt-0.5">Qualified opportunities</div>
           </div>
           <div className="rishi-card p-4">
-            <div className="text-2xl font-bold text-slate-900">{watchingCount}</div>
-            <div className="text-xs text-slate-500 mt-0.5">Watching</div>
+            <div className="text-2xl font-bold text-[var(--text-primary)]">{watchingCount}</div>
+            <div className="text-xs text-[var(--text-secondary)] mt-0.5">Watching</div>
           </div>
         </div>
 
         {freshness && (
           <div className="rishi-card px-4 py-3 flex items-center justify-between mb-8">
             <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-500" />
-              <span className="text-sm text-slate-600">Pipeline last ran {freshness}</span>
+              <span className="w-2 h-2 rounded-full bg-emerald-400" />
+              <span className="text-sm text-[var(--text-secondary)]">Pipeline last ran {freshness}</span>
             </div>
-            <span className="text-xs text-slate-400">
+            <span className="text-xs text-[var(--text-tertiary)]">
               {new Date(snapshot!.run_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
             </span>
           </div>
@@ -105,61 +105,61 @@ export default async function OverviewPage() {
 
         {!snapshot && (
           <div className="rishi-card p-6 text-center mb-8">
-            <div className="w-10 h-10 mx-auto mb-3 rounded-full bg-amber-50 flex items-center justify-center">
-              <svg className="w-5 h-5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="w-10 h-10 mx-auto mb-3 rounded-full bg-amber-900/20 flex items-center justify-center">
+              <svg className="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
-            <p className="text-sm font-medium text-slate-700 mb-1">Pipeline hasn&apos;t run yet</p>
-            <p className="text-xs text-slate-500">
+            <p className="text-sm font-medium text-[var(--text-secondary)] mb-1">Pipeline hasn&apos;t run yet</p>
+            <p className="text-xs text-[var(--text-secondary)]">
               Rishi collects signals daily at 6:00 AM UTC. Check back after the first run to see trends.
             </p>
           </div>
         )}
 
         <div className="mb-10">
-          <h2 className="text-lg font-semibold text-slate-900 mb-4">Get started</h2>
+          <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-4">Get started</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <Link href="/settings" className="rishi-card p-4 group">
               <div className="flex items-center gap-3 mb-2">
-                <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center group-hover:bg-indigo-100 transition-colors">
-                  <svg className="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="w-8 h-8 rounded-lg bg-[var(--accent-subtle)] flex items-center justify-center group-hover:bg-[var(--accent-subtle)] transition-colors">
+                  <svg className="w-4 h-4 text-[var(--text-accent)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                   </svg>
                 </div>
-                <span className="text-sm font-semibold text-slate-900">Set preferences</span>
+                <span className="text-sm font-semibold text-[var(--text-primary)]">Set preferences</span>
               </div>
-              <p className="text-xs text-slate-500">Tell Rishi your role, domains, and tech stack to personalize results.</p>
+              <p className="text-xs text-[var(--text-secondary)]">Tell Rishi your role, domains, and tech stack to personalize results.</p>
             </Link>
             <Link href="/for-you" className="rishi-card p-4 group">
               <div className="flex items-center gap-3 mb-2">
-                <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center group-hover:bg-indigo-100 transition-colors">
-                  <svg className="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="w-8 h-8 rounded-lg bg-[var(--accent-subtle)] flex items-center justify-center group-hover:bg-[var(--accent-subtle)] transition-colors">
+                  <svg className="w-4 h-4 text-[var(--text-accent)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                   </svg>
                 </div>
-                <span className="text-sm font-semibold text-slate-900">See For You</span>
+                <span className="text-sm font-semibold text-[var(--text-primary)]">See For You</span>
               </div>
-              <p className="text-xs text-slate-500">View personalized opportunities matched to your profile and interests.</p>
+              <p className="text-xs text-[var(--text-secondary)]">View personalized opportunities matched to your profile and interests.</p>
             </Link>
             <Link href="/explore" className="rishi-card p-4 group">
               <div className="flex items-center gap-3 mb-2">
-                <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center group-hover:bg-indigo-100 transition-colors">
-                  <svg className="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="w-8 h-8 rounded-lg bg-[var(--accent-subtle)] flex items-center justify-center group-hover:bg-[var(--accent-subtle)] transition-colors">
+                  <svg className="w-4 h-4 text-[var(--text-accent)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                   </svg>
                 </div>
-                <span className="text-sm font-semibold text-slate-900">Explore trends</span>
+                <span className="text-sm font-semibold text-[var(--text-primary)]">Explore trends</span>
               </div>
-              <p className="text-xs text-slate-500">Browse the full landscape of detected trends across the developer ecosystem.</p>
+              <p className="text-xs text-[var(--text-secondary)]">Browse the full landscape of detected trends across the developer ecosystem.</p>
             </Link>
           </div>
         </div>
 
         {topTrends.length > 0 && (
           <div className="mb-10">
-            <h2 className="text-lg font-semibold text-slate-900 mb-4">Top trends right now</h2>
+            <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-4">Top trends right now</h2>
             <div className="space-y-2">
               {topTrends.map((trend) => (
                 <Link
@@ -168,16 +168,16 @@ export default async function OverviewPage() {
                   className="rishi-card flex items-center justify-between px-4 py-3 group"
                 >
                   <div className="flex items-center gap-3 min-w-0">
-                    <span className="text-sm font-medium text-slate-900 group-hover:text-indigo-600 transition-colors truncate">
+                    <span className="text-sm font-medium text-[var(--text-primary)] group-hover:text-[var(--text-accent)] transition-colors truncate">
                       {trend.name}
                     </span>
                     {trend.qualified && (
-                      <span className="shrink-0 text-[10px] font-medium text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-200">
+                      <span className="shrink-0 text-[10px] font-medium text-[var(--text-accent)] bg-[var(--accent-subtle)] px-2 py-0.5 rounded-full border border-[var(--border-accent)]">
                         Qualified
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-4 shrink-0 text-xs text-slate-400">
+                  <div className="flex items-center gap-4 shrink-0 text-xs text-[var(--text-tertiary)]">
                     <span>{trend.signals} signals</span>
                     <span className="tabular-nums">{(trend.momentum * 100).toFixed(0)}% momentum</span>
                   </div>
@@ -189,8 +189,8 @@ export default async function OverviewPage() {
 
         <div className="rishi-card p-5 flex items-center justify-between">
           <div>
-            <p className="text-sm font-medium text-slate-700">Want to understand how Rishi works?</p>
-            <p className="text-xs text-slate-500 mt-0.5">Learn about signals, evidence gates, and how opportunities are qualified.</p>
+            <p className="text-sm font-medium text-[var(--text-secondary)]">Want to understand how Rishi works?</p>
+            <p className="text-xs text-[var(--text-secondary)] mt-0.5">Learn about signals, evidence gates, and how opportunities are qualified.</p>
           </div>
           <Link href="/method" className="rishi-btn-secondary text-xs! px-3! py-1.5!">
             Read the method

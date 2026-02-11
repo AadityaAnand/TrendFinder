@@ -110,8 +110,8 @@ function ChipSelect({
             onClick={() => toggle(option.value)}
             className={`px-3.5 py-2 rounded-lg text-sm font-medium transition border ${
               isSelected
-                ? 'bg-indigo-600 text-white border-indigo-600'
-                : 'bg-background text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                ? 'bg-[var(--accent)] text-white border-[var(--accent)]'
+                : 'bg-[var(--bg-0)] text-[var(--text-secondary)] border-[var(--border)] hover:border-[var(--border-strong)] hover:bg-[var(--surface)]'
             }`}
             title={option.description}
           >
@@ -251,8 +251,8 @@ export default function SettingsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="w-5 h-5 border-2 border-slate-300 border-t-indigo-600 rounded-full animate-spin" />
+      <div className="min-h-screen bg-[var(--bg-0)] flex items-center justify-center">
+        <div className="w-5 h-5 border-2 border-[var(--border-strong)] border-t-[var(--accent)] rounded-full animate-spin" />
       </div>
     )
   }
@@ -261,7 +261,7 @@ export default function SettingsPage() {
     // Step 0: Role
     <div key="role" className="space-y-6">
       <div>
-        <label className="block text-sm font-medium text-slate-700 mb-3">Your primary roles</label>
+        <label className="block text-sm font-medium text-[var(--text-secondary)] mb-3">Your primary roles</label>
         <ChipSelect options={ROLE_OPTIONS} selected={targetRoles} onChange={(v) => setTargetRoles(v as string[])} />
       </div>
     </div>,
@@ -269,57 +269,57 @@ export default function SettingsPage() {
     // Step 1: Interests
     <div key="interests" className="space-y-6">
       <div>
-        <label className="block text-sm font-medium text-slate-700 mb-3">Domains you care about</label>
+        <label className="block text-sm font-medium text-[var(--text-secondary)] mb-3">Domains you care about</label>
         <ChipSelect options={DOMAIN_OPTIONS} selected={domains} onChange={(v) => setDomains(v as string[])} />
       </div>
       <div>
-        <label className="block text-sm font-medium text-slate-700 mb-3">Tech stack you work with</label>
+        <label className="block text-sm font-medium text-[var(--text-secondary)] mb-3">Tech stack you work with</label>
         <ChipSelect options={STACK_OPTIONS} selected={techStack} onChange={(v) => setTechStack(v as string[])} />
       </div>
       <div>
-        <label className="block text-sm font-medium text-slate-700 mb-2">Topics to avoid</label>
+        <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">Topics to avoid</label>
         <input
           type="text"
           value={avoidTopics}
           onChange={(e) => setAvoidTopics(e.target.value)}
           placeholder="e.g., crypto, blockchain"
-          className="w-full px-3.5 py-2.5 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+          className="w-full px-3.5 py-2.5 border border-[var(--border-strong)] rounded-lg text-sm bg-[var(--surface)] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:border-transparent transition"
         />
-        <p className="text-xs text-slate-400 mt-1.5">Comma-separated. These topics will be ranked lower, not hidden.</p>
+        <p className="text-xs text-[var(--text-tertiary)] mt-1.5">Comma-separated. These topics will be ranked lower, not hidden.</p>
       </div>
     </div>,
 
     // Step 2: Constraints
     <div key="constraints" className="space-y-6">
       <div>
-        <label className="block text-sm font-medium text-slate-700 mb-3">Time horizon</label>
+        <label className="block text-sm font-medium text-[var(--text-secondary)] mb-3">Time horizon</label>
         <ChipSelect options={TIME_HORIZON_OPTIONS} selected={timeHorizon} onChange={(v) => setTimeHorizon(v as string)} multi={false} />
       </div>
       <div>
-        <label className="block text-sm font-medium text-slate-700 mb-3">Team size</label>
+        <label className="block text-sm font-medium text-[var(--text-secondary)] mb-3">Team size</label>
         <ChipSelect options={TEAM_SIZE_OPTIONS} selected={teamSize} onChange={(v) => setTeamSize(v as string)} multi={false} />
       </div>
       <div>
-        <label className="block text-sm font-medium text-slate-700 mb-3">Risk tolerance</label>
+        <label className="block text-sm font-medium text-[var(--text-secondary)] mb-3">Risk tolerance</label>
         <ChipSelect options={RISK_OPTIONS} selected={riskTolerance} onChange={(v) => setRiskTolerance(v as string)} multi={false} />
       </div>
     </div>,
   ]
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-[var(--bg-0)]">
       <div className="max-w-xl mx-auto px-6 py-12">
         {/* Header */}
         <div className="mb-8">
           {isOnboarding ? (
             <>
-              <h1 className="text-2xl font-bold text-slate-900">Set up your preferences</h1>
-              <p className="text-sm text-slate-500 mt-1">This only changes ranking — all qualified opportunities remain visible.</p>
+              <h1 className="text-2xl font-bold text-[var(--text-primary)]">Set up your preferences</h1>
+              <p className="text-sm text-[var(--text-secondary)] mt-1">This only changes ranking — all qualified opportunities remain visible.</p>
             </>
           ) : (
             <>
-              <h1 className="text-2xl font-bold text-slate-900">Settings</h1>
-              <p className="text-sm text-slate-500 mt-1">Update your preferences to adjust opportunity ranking.</p>
+              <h1 className="text-2xl font-bold text-[var(--text-primary)]">Settings</h1>
+              <p className="text-sm text-[var(--text-secondary)] mt-1">Update your preferences to adjust opportunity ranking.</p>
             </>
           )}
         </div>
@@ -331,15 +331,15 @@ export default function SettingsPage() {
               <button
                 onClick={() => setStep(i)}
                 className={`flex items-center gap-2 text-xs font-medium transition ${
-                  i === step ? 'text-slate-900' : i < step ? 'text-indigo-600' : 'text-slate-400'
+                  i === step ? 'text-[var(--text-primary)]' : i < step ? 'text-[var(--text-accent)]' : 'text-[var(--text-tertiary)]'
                 }`}
               >
                 <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-semibold border transition ${
                   i === step
-                    ? 'border-indigo-600 bg-indigo-600 text-white'
+                    ? 'border-[var(--accent)] bg-[var(--accent)] text-white'
                     : i < step
-                    ? 'border-indigo-500 bg-indigo-500 text-white'
-                    : 'border-slate-200 text-slate-400'
+                    ? 'border-[var(--accent)] bg-[var(--accent)] text-white'
+                    : 'border-[var(--border)] text-[var(--text-tertiary)]'
                 }`}>
                   {i < step ? (
                     <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -352,7 +352,7 @@ export default function SettingsPage() {
                 <span className="hidden sm:inline">{s.title}</span>
               </button>
               {i < STEPS.length - 1 && (
-                <div className={`grow h-px ${i < step ? 'bg-indigo-300' : 'bg-slate-200'}`} />
+                <div className={`grow h-px ${i < step ? 'bg-[var(--border-accent)]' : 'bg-[var(--border)]'}`} />
               )}
             </div>
           ))}
@@ -360,18 +360,18 @@ export default function SettingsPage() {
 
         {/* Step title */}
         <div className="mb-6">
-          <h2 className="text-lg font-semibold text-slate-900">{STEPS[step].title}</h2>
-          <p className="text-sm text-slate-500 mt-0.5">{STEPS[step].subtitle}</p>
+          <h2 className="text-lg font-semibold text-[var(--text-primary)]">{STEPS[step].title}</h2>
+          <p className="text-sm text-[var(--text-secondary)] mt-0.5">{STEPS[step].subtitle}</p>
         </div>
 
         {error && (
-          <div className="mb-6 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+          <div className="mb-6 p-3 bg-red-900/20 border border-red-800/30 rounded-lg text-sm text-red-400">
             {error}
           </div>
         )}
 
         {saved && !isOnboarding && (
-          <div className="mb-6 p-3 bg-indigo-50 border border-indigo-200 rounded-lg text-sm text-indigo-700">
+          <div className="mb-6 p-3 bg-[var(--accent-subtle)] border border-[var(--border-accent)] rounded-lg text-sm text-[var(--text-accent)]">
             Preferences saved successfully.
           </div>
         )}
@@ -380,12 +380,12 @@ export default function SettingsPage() {
         {stepContent[step]}
 
         {/* Navigation */}
-        <div className="flex items-center justify-between mt-10 pt-6 border-t border-slate-100">
+        <div className="flex items-center justify-between mt-10 pt-6 border-t border-[var(--border)]">
           <div>
             {step > 0 && (
               <button
                 onClick={handleBack}
-                className="text-sm text-slate-500 hover:text-slate-700 font-medium transition"
+                className="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] font-medium transition"
               >
                 Back
               </button>
@@ -396,8 +396,8 @@ export default function SettingsPage() {
             disabled={saving}
             className={`px-6 py-2.5 rounded-lg text-sm font-semibold transition ${
               saving
-                ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
-                : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                ? 'bg-[var(--surface)] text-[var(--text-secondary)] cursor-not-allowed'
+                : 'bg-[var(--accent)] text-white hover:bg-[var(--accent)]'
             }`}
           >
             {step < STEPS.length - 1
@@ -413,7 +413,7 @@ export default function SettingsPage() {
 
         {/* Last saved info for returning users */}
         {!isOnboarding && lastSavedAt && (
-          <p className="text-xs text-slate-400 text-center mt-6">
+          <p className="text-xs text-[var(--text-tertiary)] text-center mt-6">
             Last saved {new Date(lastSavedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
             {profile?.preferences?.preference_version ? ` · v${profile.preferences.preference_version}` : ''}
           </p>

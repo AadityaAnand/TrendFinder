@@ -23,16 +23,16 @@ function Accordion({ items }: { items: AccordionItem[] }) {
               onClick={() => setOpenIndex(isOpen ? null : i)}
               className="w-full flex items-center justify-between px-5 py-4 text-left"
             >
-              <span className="text-sm font-semibold text-slate-900">{item.title}</span>
+              <span className="text-sm font-semibold text-[var(--text-primary)]">{item.title}</span>
               <svg
-                className={`w-4 h-4 text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+                className={`w-4 h-4 text-[var(--text-tertiary)] transition-transform ${isOpen ? 'rotate-180' : ''}`}
                 fill="none" stroke="currentColor" viewBox="0 0 24 24"
               >
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
             </button>
             {isOpen && (
-              <div className="px-5 pb-5 text-sm text-slate-600 leading-relaxed">
+              <div className="px-5 pb-5 text-sm text-[var(--text-secondary)] leading-relaxed">
                 {item.content}
               </div>
             )}
@@ -45,9 +45,9 @@ function Accordion({ items }: { items: AccordionItem[] }) {
 
 function GlossaryEntry({ term, definition }: { term: string; definition: string }) {
   return (
-    <div className="flex gap-4 py-3 border-b border-slate-100 last:border-0">
-      <span className="text-sm font-semibold text-indigo-600 shrink-0 w-40">{term}</span>
-      <span className="text-sm text-slate-600">{definition}</span>
+    <div className="flex gap-4 py-3 border-b border-[var(--border)] last:border-0">
+      <span className="text-sm font-semibold text-[var(--text-accent)] shrink-0 w-40">{term}</span>
+      <span className="text-sm text-[var(--text-secondary)]">{definition}</span>
     </div>
   )
 }
@@ -62,8 +62,8 @@ export default function MethodPage() {
 
   if (!ready) {
     return (
-      <div className="min-h-screen bg-[var(--background)] flex items-center justify-center">
-        <div className="w-5 h-5 border-2 border-slate-300 border-t-indigo-600 rounded-full animate-spin" />
+      <div className="min-h-screen bg-[var(--bg-0)] flex items-center justify-center">
+        <div className="w-5 h-5 border-2 border-[var(--border-strong)] border-t-[var(--accent)] rounded-full animate-spin" />
       </div>
     )
   }
@@ -82,9 +82,9 @@ export default function MethodPage() {
             On its own, a single signal is just noise. Rishi needs multiple signals pointing in the same direction
             before it pays attention.
           </p>
-          <div className="bg-slate-50 rounded-lg p-3 mt-2">
-            <p className="text-xs text-slate-500 font-medium mb-1">Example</p>
-            <p className="text-xs text-slate-600">
+          <div className="bg-[var(--surface)] rounded-lg p-3 mt-2">
+            <p className="text-xs text-[var(--text-secondary)] font-medium mb-1">Example</p>
+            <p className="text-xs text-[var(--text-secondary)]">
               A Hacker News post titled &ldquo;Show HN: Open-source alternative to Notion&rdquo; with 150 points
               is one signal. A GitHub repo trending in the same space is another. Together, they start forming a trend.
             </p>
@@ -125,19 +125,19 @@ export default function MethodPage() {
           </p>
           <div className="space-y-2 mt-2">
             <div className="flex items-start gap-3">
-              <span className="shrink-0 px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 text-xs font-medium">Valid</span>
-              <p className="text-slate-500">Evidence is strong enough to form a problem statement. Multiple independent sources,
+              <span className="shrink-0 px-2 py-0.5 rounded-full bg-[var(--accent-subtle)] text-[var(--text-accent)] text-xs font-medium">Valid</span>
+              <p className="text-[var(--text-secondary)]">Evidence is strong enough to form a problem statement. Multiple independent sources,
                 demand signals, and sufficient history. An LLM synthesizes the evidence into a hypothesis title,
                 summary, affected personas, and pain signals.</p>
             </div>
             <div className="flex items-start gap-3">
               <span className="shrink-0 px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 text-xs font-medium">Uncertain</span>
-              <p className="text-slate-500">The topic shows promise but doesn&apos;t have enough independent evidence or demand signals
+              <p className="text-[var(--text-secondary)]">The topic shows promise but doesn&apos;t have enough independent evidence or demand signals
                 to confidently say it represents a real problem. Rishi keeps watching it.</p>
             </div>
             <div className="flex items-start gap-3">
-              <span className="shrink-0 px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-xs font-medium">Topic only</span>
-              <p className="text-slate-500">Signals are mostly narrative, opinion, or from a single source. This is a topic people
+              <span className="shrink-0 px-2 py-0.5 rounded-full bg-[var(--surface)] text-[var(--text-secondary)] text-xs font-medium">Topic only</span>
+              <p className="text-[var(--text-secondary)]">Signals are mostly narrative, opinion, or from a single source. This is a topic people
                 are discussing, not a problem people need solved. Filtered from the default Explore view.</p>
             </div>
           </div>
@@ -158,38 +158,38 @@ export default function MethodPage() {
           </p>
           <div className="space-y-2 mt-2">
             <div className="flex items-start gap-3">
-              <span className="shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-bold">1</span>
+              <span className="shrink-0 w-6 h-6 rounded-full bg-[var(--accent-subtle)] text-[var(--text-accent)] flex items-center justify-center text-xs font-bold">1</span>
               <div>
-                <p className="font-medium text-slate-800">Demand detection</p>
-                <p className="text-slate-500 mt-0.5">People are asking &ldquo;how to&rdquo;, &ldquo;alternative to&rdquo;, or &ldquo;problem with&rdquo; &mdash; indicating real unmet need.</p>
+                <p className="font-medium text-[var(--text-primary)]">Demand detection</p>
+                <p className="text-[var(--text-secondary)] mt-0.5">People are asking &ldquo;how to&rdquo;, &ldquo;alternative to&rdquo;, or &ldquo;problem with&rdquo; &mdash; indicating real unmet need.</p>
               </div>
             </div>
             <div className="flex items-start gap-3">
-              <span className="shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-bold">2</span>
+              <span className="shrink-0 w-6 h-6 rounded-full bg-[var(--accent-subtle)] text-[var(--text-accent)] flex items-center justify-center text-xs font-bold">2</span>
               <div>
-                <p className="font-medium text-slate-800">Independent evidence</p>
-                <p className="text-slate-500 mt-0.5">2+ sources confirm the trend independently (not the same link shared across platforms).</p>
+                <p className="font-medium text-[var(--text-primary)]">Independent evidence</p>
+                <p className="text-[var(--text-secondary)] mt-0.5">2+ sources confirm the trend independently (not the same link shared across platforms).</p>
               </div>
             </div>
             <div className="flex items-start gap-3">
-              <span className="shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-bold">3</span>
+              <span className="shrink-0 w-6 h-6 rounded-full bg-[var(--accent-subtle)] text-[var(--text-accent)] flex items-center justify-center text-xs font-bold">3</span>
               <div>
-                <p className="font-medium text-slate-800">Valid hypothesis</p>
-                <p className="text-slate-500 mt-0.5">The hypothesis generator must classify this as &ldquo;valid&rdquo; with confidence above 40%. Topic-only and uncertain signals are held back.</p>
+                <p className="font-medium text-[var(--text-primary)]">Valid hypothesis</p>
+                <p className="text-[var(--text-secondary)] mt-0.5">The hypothesis generator must classify this as &ldquo;valid&rdquo; with confidence above 40%. Topic-only and uncertain signals are held back.</p>
               </div>
             </div>
             <div className="flex items-start gap-3">
-              <span className="shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-bold">4</span>
+              <span className="shrink-0 w-6 h-6 rounded-full bg-[var(--accent-subtle)] text-[var(--text-accent)] flex items-center justify-center text-xs font-bold">4</span>
               <div>
-                <p className="font-medium text-slate-800">Actionability</p>
-                <p className="text-slate-500 mt-0.5">A specific, buildable product or feature can be suggested &mdash; not just &ldquo;this topic is popular&rdquo;.</p>
+                <p className="font-medium text-[var(--text-primary)]">Actionability</p>
+                <p className="text-[var(--text-secondary)] mt-0.5">A specific, buildable product or feature can be suggested &mdash; not just &ldquo;this topic is popular&rdquo;.</p>
               </div>
             </div>
             <div className="flex items-start gap-3">
-              <span className="shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-bold">5</span>
+              <span className="shrink-0 w-6 h-6 rounded-full bg-[var(--accent-subtle)] text-[var(--text-accent)] flex items-center justify-center text-xs font-bold">5</span>
               <div>
-                <p className="font-medium text-slate-800">Confidence gate</p>
-                <p className="text-slate-500 mt-0.5">Lifecycle stage classification confidence must exceed 60%. Below that, the data is too uncertain to recommend.</p>
+                <p className="font-medium text-[var(--text-primary)]">Confidence gate</p>
+                <p className="text-[var(--text-secondary)] mt-0.5">Lifecycle stage classification confidence must exceed 60%. Below that, the data is too uncertain to recommend.</p>
               </div>
             </div>
           </div>
@@ -206,19 +206,19 @@ export default function MethodPage() {
           </p>
           <ul className="space-y-1.5 ml-1">
             <li className="flex items-start gap-2">
-              <span className="text-slate-300 shrink-0">&bull;</span>
+              <span className="text-[var(--text-tertiary)] shrink-0">&bull;</span>
               <span>&ldquo;Needs more evidence&rdquo; &mdash; only one source so far</span>
             </li>
             <li className="flex items-start gap-2">
-              <span className="text-slate-300 shrink-0">&bull;</span>
+              <span className="text-[var(--text-tertiary)] shrink-0">&bull;</span>
               <span>&ldquo;No demand signals yet&rdquo; &mdash; people are discussing it, but nobody is asking for solutions</span>
             </li>
             <li className="flex items-start gap-2">
-              <span className="text-slate-300 shrink-0">&bull;</span>
+              <span className="text-[var(--text-tertiary)] shrink-0">&bull;</span>
               <span>&ldquo;Low confidence&rdquo; &mdash; not enough data to classify the lifecycle stage</span>
             </li>
             <li className="flex items-start gap-2">
-              <span className="text-slate-300 shrink-0">&bull;</span>
+              <span className="text-[var(--text-tertiary)] shrink-0">&bull;</span>
               <span>&ldquo;No buildable action&rdquo; &mdash; interesting discussion, but no clear product opportunity yet</span>
             </li>
           </ul>
@@ -236,8 +236,8 @@ export default function MethodPage() {
             Momentum is a composite score reflecting how much attention a trend is getting right now,
             weighted toward recent activity. It&apos;s calculated as:
           </p>
-          <div className="bg-slate-50 rounded-lg p-3">
-            <p className="text-xs font-mono text-slate-700">
+          <div className="bg-[var(--surface)] rounded-lg p-3">
+            <p className="text-xs font-mono text-[var(--text-secondary)]">
               momentum = sum(signal_weights &times; exponential_decay) / p90_baseline
             </p>
           </div>
@@ -296,40 +296,40 @@ export default function MethodPage() {
   ]
 
   return (
-    <div className="min-h-screen bg-[var(--background)]">
+    <div className="min-h-screen bg-[var(--bg-0)]">
       <div className="max-w-3xl mx-auto px-6 py-12">
         <div className="mb-10">
-          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">How Rishi works</h1>
-          <p className="text-base text-slate-500 mt-2 max-w-2xl leading-relaxed">
+          <h1 className="text-3xl font-bold text-[var(--text-primary)] tracking-tight">How Rishi works</h1>
+          <p className="text-base text-[var(--text-secondary)] mt-2 max-w-2xl leading-relaxed">
             Rishi watches signals, forms problem hypotheses, and surfaces what&apos;s actionable.
             Here&apos;s exactly how it works, from raw data to personalized recommendations.
           </p>
         </div>
 
         <div className="mb-8">
-          <div className="flex items-center gap-6 text-xs text-slate-400 mb-6">
+          <div className="flex items-center gap-6 text-xs text-[var(--text-tertiary)] mb-6">
             <span className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-indigo-500" />
+              <span className="w-2 h-2 rounded-full bg-[var(--accent)]" />
               4 sources scraped daily
             </span>
             <span className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-cyan-500" />
+              <span className="w-2 h-2 rounded-full bg-cyan-400" />
               5 evidence gates
             </span>
             <span className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-500" />
+              <span className="w-2 h-2 rounded-full bg-emerald-400" />
               Deterministic scoring
             </span>
           </div>
         </div>
 
         <div className="mb-12">
-          <h2 className="text-lg font-semibold text-slate-900 mb-4">The pipeline</h2>
+          <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-4">The pipeline</h2>
           <Accordion items={pipelineSteps} />
         </div>
 
         <div className="mb-12">
-          <h2 className="text-lg font-semibold text-slate-900 mb-4">Glossary</h2>
+          <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-4">Glossary</h2>
           <div className="rishi-card px-5 py-2">
             <GlossaryEntry
               term="Signal"
@@ -367,10 +367,10 @@ export default function MethodPage() {
         </div>
 
         <div className="rishi-card p-6 text-center">
-          <p className="text-sm text-slate-500 mb-1">
+          <p className="text-sm text-[var(--text-secondary)] mb-1">
             Every score is a weighted formula. Every uncertainty is flagged.
           </p>
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-[var(--text-tertiary)]">
             Rishi is built on guardrails, not hype. If you see something that seems wrong, that&apos;s a bug &mdash; not a feature.
           </p>
         </div>
