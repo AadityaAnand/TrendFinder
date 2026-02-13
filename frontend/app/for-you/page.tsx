@@ -111,8 +111,8 @@ function ForYouContent() {
 
   if (!ready || loading) {
     return (
-      <div className="min-h-screen bg-[var(--bg-0)] flex items-center justify-center">
-        <div className="w-5 h-5 border-2 border-[var(--border-strong)] border-t-[var(--accent)] rounded-full animate-spin" />
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="w-5 h-5 border-2 border-slate-200 border-t-indigo-600 rounded-full animate-spin" />
       </div>
     )
   }
@@ -120,26 +120,26 @@ function ForYouContent() {
   const noDataAtAll = opportunities.length === 0 && watching.length === 0
 
   return (
-    <div className="min-h-screen bg-[var(--bg-0)]">
+    <div className="min-h-screen bg-white">
       <div className="max-w-2xl mx-auto px-6 py-12">
 
         <header className="mb-10">
-          <h1 className="text-2xl font-semibold text-[var(--text-primary)] tracking-tight">For You</h1>
-          <p className="text-sm text-[var(--text-secondary)] mt-1">Problem hypotheses matched to your profile</p>
+          <h1 className="text-2xl font-semibold text-slate-900 tracking-tight">Recommended Opportunities</h1>
+          <p className="text-sm text-slate-500 mt-1">Ranked for you based on your goals and constraints</p>
         </header>
 
         {noDataAtAll && (
-          <section className="border border-[var(--border)] rounded-xl p-10 text-center">
-            <p className="text-base font-medium text-[var(--text-primary)] mb-2">Rishi is still forming hypotheses</p>
-            <p className="text-sm text-[var(--text-secondary)] max-w-md mx-auto mb-6">
-              Signals are being collected and analyzed. Problem hypotheses will appear here
+          <section className="bg-white border border-slate-200 rounded-xl p-10 text-center">
+            <p className="text-base font-medium text-slate-900 mb-2">Rishi is still collecting signals</p>
+            <p className="text-sm text-slate-500 max-w-md mx-auto mb-6">
+              Signals are being collected and analyzed. Opportunities will appear here
               once evidence is strong enough to qualify.
             </p>
             <div className="flex items-center justify-center gap-3">
-              <Link href="/explore" className="px-4 py-2 bg-[var(--accent)] text-white text-sm font-medium rounded-lg hover:bg-[var(--accent)] transition">
+              <Link href="/explore" className="rishi-btn-primary">
                 Browse signals
               </Link>
-              <Link href="/method" className="px-4 py-2 border border-[var(--border)] text-[var(--text-secondary)] text-sm font-medium rounded-lg hover:bg-[var(--surface)] transition">
+              <Link href="/method" className="rishi-btn-secondary">
                 How it works
               </Link>
             </div>
@@ -147,12 +147,12 @@ function ForYouContent() {
         )}
 
         {!noDataAtAll && opportunities.length === 0 && (
-          <section className="border border-[var(--border)] rounded-xl p-8 text-center mb-10">
-            <p className="text-base font-medium text-[var(--text-primary)] mb-2">No qualified opportunities yet</p>
-            <p className="text-sm text-[var(--text-secondary)] max-w-md mx-auto mb-2">
+          <section className="bg-white border border-slate-200 rounded-xl p-8 text-center mb-10">
+            <p className="text-base font-medium text-slate-900 mb-2">No qualified opportunities yet</p>
+            <p className="text-sm text-slate-500 max-w-md mx-auto mb-2">
               No hypotheses have passed all evidence gates for your preferences.
             </p>
-            <p className="text-xs text-[var(--text-tertiary)] max-w-sm mx-auto">
+            <p className="text-xs text-slate-400 max-w-sm mx-auto">
               This is intentional — false positives are worse than waiting.
             </p>
           </section>
@@ -160,11 +160,11 @@ function ForYouContent() {
 
         {opportunities.length > 0 && (
           <section className="mb-12">
-            <h2 className="text-xs font-semibold text-[var(--text-tertiary)] uppercase tracking-wider mb-4">
-              {hasQualified ? 'Top opportunities' : 'Emerging signals'}
+            <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">
+              {hasQualified ? 'Ready to Build' : 'Emerging Signals'}
             </h2>
             {!hasQualified && (
-              <p className="text-xs text-amber-400 mb-4">
+              <p className="text-xs text-amber-600 mb-4">
                 No fully qualified hypotheses yet. Showing top emerging signals still gathering evidence.
               </p>
             )}
@@ -182,43 +182,43 @@ function ForYouContent() {
                 const isPending = !h || h.status === 'uncertain' || h.status === 'topic_only'
 
                 return (
-                  <article key={opp.id} className="border border-[var(--border)] rounded-xl p-5 hover:border-[var(--border-strong)] transition">
+                  <article key={opp.id} className="bg-white border border-slate-200 rounded-xl p-5 hover:border-slate-300 hover:shadow-sm transition">
                     <div className="flex items-start justify-between gap-3 mb-2">
                       <Link
                         href={`/trends/${opp.trend_id}`}
-                        className="text-base font-semibold text-[var(--text-primary)] hover:text-[var(--text-accent)] transition-colors leading-snug"
+                        className="text-base font-semibold text-slate-900 hover:text-indigo-600 transition-colors leading-snug"
                       >
                         {title}
                       </Link>
                       <div className="flex items-center gap-1.5 shrink-0">
                         {opp.qualified && opp.personalized_score > 0 && (
-                          <span className="text-[10px] font-semibold text-[var(--text-accent)] bg-[var(--accent-subtle)] px-2 py-0.5 rounded-full">
+                          <span className="text-xs font-medium text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">
                             {Math.round(opp.personalized_score * 100)}%
                           </span>
                         )}
                         {!opp.qualified && (
-                          <span className="text-[10px] text-amber-400 bg-amber-900/20 px-2 py-0.5 rounded-full">Forming</span>
+                          <span className="text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full font-medium">Forming</span>
                         )}
                       </div>
                     </div>
 
                     {summary && (
-                      <p className="text-sm text-[var(--text-secondary)] leading-relaxed mb-3">{summary}</p>
+                      <p className="text-sm text-slate-600 leading-relaxed mb-3">{summary}</p>
                     )}
 
                     {whoAffects.length > 0 && (
-                      <p className="text-xs text-[var(--text-tertiary)] mb-3">
+                      <p className="text-xs text-slate-400 mb-3">
                         Affects: {whoAffects.join(', ')}
                       </p>
                     )}
 
                     {painSignals.length > 0 && (
                       <div className="mb-3">
-                        <p className="text-[11px] font-semibold text-[var(--text-tertiary)] uppercase tracking-wider mb-1.5">Pain signals</p>
+                        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Pain signals</p>
                         <ul className="space-y-1">
                           {painSignals.slice(0, 4).map((p, i) => (
-                            <li key={i} className="text-sm text-[var(--text-secondary)] flex gap-2">
-                              <span className="text-[var(--accent-muted)] shrink-0">&bull;</span>
+                            <li key={i} className="text-sm text-slate-600 flex gap-2">
+                              <span className="text-indigo-400 shrink-0">&bull;</span>
                               <span>{p}</span>
                             </li>
                           ))}
@@ -228,11 +228,11 @@ function ForYouContent() {
 
                     {painSignals.length === 0 && actions.length > 0 && (
                       <div className="mb-3">
-                        <p className="text-[11px] font-semibold text-[var(--text-tertiary)] uppercase tracking-wider mb-1.5">What to build</p>
+                        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">What to build</p>
                         <ul className="space-y-1">
                           {actions.slice(0, 3).map((a, i) => (
-                            <li key={i} className="text-sm text-[var(--text-secondary)] flex gap-2">
-                              <span className="text-[var(--accent-muted)] shrink-0">&bull;</span>
+                            <li key={i} className="text-sm text-slate-600 flex gap-2">
+                              <span className="text-indigo-400 shrink-0">&bull;</span>
                               <span>{a}</span>
                             </li>
                           ))}
@@ -242,22 +242,22 @@ function ForYouContent() {
 
                     <button
                       onClick={() => setExpandedId(isExpanded ? null : opp.id)}
-                      className="text-[11px] text-[var(--text-accent)] hover:text-[var(--text-accent)] font-medium transition-colors mb-1"
+                      className="text-xs text-indigo-600 hover:text-indigo-700 font-medium transition-colors mb-1"
                     >
                       {isExpanded ? 'Less' : 'Details'}
                     </button>
 
                     {isExpanded && (
-                      <div className="mt-3 pt-3 border-t border-[var(--border)] space-y-4">
+                      <div className="mt-3 pt-3 border-t border-slate-100 space-y-4">
                         {demandEvidence.length > 0 && (
                           <div>
-                            <p className="text-[11px] font-semibold text-[var(--text-tertiary)] uppercase tracking-wider mb-1.5">Evidence</p>
+                            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Evidence</p>
                             <ul className="space-y-1">
                               {demandEvidence.slice(0, 5).map((d, i) => (
-                                <li key={i} className="text-xs text-[var(--text-secondary)]">
-                                  <span className="text-[var(--text-tertiary)]">[{d.source}]</span>{' '}
+                                <li key={i} className="text-xs text-slate-600">
+                                  <span className="text-slate-400">[{d.source}]</span>{' '}
                                   {d.url ? (
-                                    <a href={d.url} target="_blank" rel="noopener noreferrer" className="hover:text-[var(--text-accent)] transition-colors">
+                                    <a href={d.url} target="_blank" rel="noopener noreferrer" className="hover:text-indigo-600 transition-colors">
                                       {d.title}
                                     </a>
                                   ) : d.title}
@@ -269,18 +269,18 @@ function ForYouContent() {
 
                         {opp.whats_the_risk && (
                           <div>
-                            <p className="text-[11px] font-semibold text-[var(--text-tertiary)] uppercase tracking-wider mb-1">Uncertainty</p>
-                            <p className="text-xs text-[var(--text-secondary)]">{opp.whats_the_risk}</p>
+                            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Uncertainty</p>
+                            <p className="text-xs text-slate-600">{opp.whats_the_risk}</p>
                           </div>
                         )}
 
                         {isPending && !opp.whats_the_risk && (
-                          <p className="text-xs text-amber-400">
+                          <p className="text-xs text-amber-600">
                             Hypothesis is {h?.status || 'pending'}. Evidence not yet strong enough for a confident assessment.
                           </p>
                         )}
 
-                        <div className="flex items-center gap-3 text-xs text-[var(--text-tertiary)]">
+                        <div className="flex items-center gap-3 text-xs text-slate-500">
                           {opp.timing && <span>Timing: {opp.timing.label.replace(/_/g, ' ')}</span>}
                           {opp.competition && <span>Competition: {opp.competition.level}</span>}
                           {h?.confidence !== undefined && <span>Confidence: {Math.round((h.confidence ?? 0) * 100)}%</span>}
@@ -288,10 +288,10 @@ function ForYouContent() {
 
                         {(opp.fit_reasons || []).length > 0 && (
                           <div>
-                            <p className="text-[11px] font-semibold text-[var(--text-tertiary)] uppercase tracking-wider mb-1">Why you see this</p>
+                            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Why you see this</p>
                             <ul className="space-y-0.5">
                               {opp.fit_reasons.filter(r => !r.includes('avoid')).map((r, i) => (
-                                <li key={i} className="text-xs text-[var(--text-secondary)]">&bull; {r}</li>
+                                <li key={i} className="text-xs text-slate-600">&bull; {r}</li>
                               ))}
                             </ul>
                           </div>
@@ -299,12 +299,12 @@ function ForYouContent() {
                       </div>
                     )}
 
-                    <div className="mt-3 pt-3 border-t border-[var(--border)]">
+                    <div className="mt-3 pt-3 border-t border-slate-100">
                       <Link
                         href={`/trends/${opp.trend_id}`}
-                        className="text-xs font-medium text-[var(--text-accent)] hover:text-[var(--text-accent)] transition-colors"
+                        className="text-xs font-medium text-indigo-600 hover:text-indigo-700 transition-colors"
                       >
-                        Full analysis &rarr;
+                        Open Brief &rarr;
                       </Link>
                     </div>
                   </article>
@@ -316,8 +316,8 @@ function ForYouContent() {
 
         {watching.length > 0 && (
           <section>
-            <h2 className="text-xs font-semibold text-[var(--text-tertiary)] uppercase tracking-wider mb-3">Watching</h2>
-            <p className="text-xs text-[var(--text-tertiary)] mb-4">
+            <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Watching</h2>
+            <p className="text-xs text-slate-400 mb-4">
               Signals that haven&apos;t formed valid hypotheses yet
             </p>
 
@@ -331,14 +331,14 @@ function ForYouContent() {
                   <Link
                     key={t.trend_id}
                     href={`/trends/${t.trend_id}`}
-                    className="flex items-center justify-between py-2.5 px-3 rounded-lg hover:bg-[var(--surface)] transition group"
+                    className="flex items-center justify-between py-2.5 px-3 rounded-lg hover:bg-slate-50 transition group"
                   >
                     <div className="min-w-0">
-                      <span className="text-sm text-[var(--text-primary)] group-hover:text-[var(--text-accent)] transition-colors">{name}</span>
-                      <span className="text-xs text-[var(--text-tertiary)] ml-2">{t.signal_count} signal{t.signal_count !== 1 ? 's' : ''}</span>
+                      <span className="text-sm text-slate-800 group-hover:text-indigo-600 transition-colors">{name}</span>
+                      <span className="text-xs text-slate-400 ml-2">{t.signal_count} signal{t.signal_count !== 1 ? 's' : ''}</span>
                     </div>
                     {t.reasons.length > 0 && (
-                      <span className="text-[10px] text-[var(--text-tertiary)] shrink-0">{t.reasons[0]}</span>
+                      <span className="text-xs text-slate-400 shrink-0">{t.reasons[0]}</span>
                     )}
                   </Link>
                 )
@@ -346,7 +346,7 @@ function ForYouContent() {
             </div>
 
             {watching.length > 8 && (
-              <Link href="/explore" className="block text-center text-xs text-[var(--text-accent)] font-medium mt-3">
+              <Link href="/explore" className="block text-center text-xs text-indigo-600 font-medium mt-3">
                 See all {watching.length} in Explore
               </Link>
             )}
@@ -360,8 +360,8 @@ function ForYouContent() {
 export default function ForYouPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen bg-[var(--bg-0)] flex items-center justify-center">
-        <div className="w-5 h-5 border-2 border-[var(--border-strong)] border-t-[var(--accent)] rounded-full animate-spin" />
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="w-5 h-5 border-2 border-slate-200 border-t-indigo-600 rounded-full animate-spin" />
       </div>
     }>
       <ForYouContent />

@@ -15,7 +15,7 @@ export default function SignInPage() {
 
   useEffect(() => {
     if (ready && isLoggedIn) {
-      router.replace(hasPrefs ? '/explore' : '/settings')
+      router.replace(hasPrefs ? '/for-you' : '/settings')
     }
   }, [ready, isLoggedIn, hasPrefs, router])
 
@@ -46,21 +46,21 @@ export default function SignInPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[var(--bg-0)] flex items-center justify-center">
+    <div className="min-h-screen bg-white flex items-center justify-center">
       <div className="w-full max-w-sm px-6">
         <div className="text-center mb-8">
           <Link href="/" className="text-base font-bold tracking-tight">
             <span className="rishi-gradient-text">Rishi</span>
           </Link>
-          <h1 className="text-2xl font-bold text-[var(--text-primary)] mt-6 mb-2">Sign in</h1>
-          <p className="text-sm text-[var(--text-secondary)]">
+          <h1 className="text-2xl font-bold text-slate-900 mt-6 mb-2">Sign in</h1>
+          <p className="text-sm text-slate-500">
             Welcome back.
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
+            <label htmlFor="email" className="block text-sm font-medium text-slate-500 mb-1.5">
               Email
             </label>
             <input
@@ -70,12 +70,12 @@ export default function SignInPage() {
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
               required
-              className="w-full px-3.5 py-2.5 border border-[var(--border-strong)] rounded-lg text-sm bg-[var(--surface)] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:border-[var(--accent)] transition"
+              className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition"
             />
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
+            <label htmlFor="password" className="block text-sm font-medium text-slate-500 mb-1.5">
               Password
             </label>
             <input
@@ -85,12 +85,12 @@ export default function SignInPage() {
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Your password"
               required
-              className="w-full px-3.5 py-2.5 border border-[var(--border-strong)] rounded-lg text-sm bg-[var(--surface)] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:border-[var(--accent)] transition"
+              className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition"
             />
           </div>
 
           {error && (
-            <p className="text-sm text-red-400">{error}</p>
+            <p className="text-sm text-red-600">{error}</p>
           )}
 
           <button
@@ -98,17 +98,17 @@ export default function SignInPage() {
             disabled={loading}
             className={`w-full py-2.5 rounded-lg text-sm font-semibold transition ${
               loading
-                ? 'bg-[var(--surface)] text-[var(--text-tertiary)] cursor-not-allowed'
-                : 'bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]'
+                ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                : 'bg-indigo-600 text-white hover:bg-indigo-700'
             }`}
           >
             {loading ? 'Signing in...' : 'Sign in'}
           </button>
         </form>
 
-        <p className="text-center text-sm text-[var(--text-secondary)] mt-6">
+        <p className="text-center text-sm text-slate-500 mt-6">
           Don&apos;t have an account?{' '}
-          <Link href="/sign-up" className="text-[var(--text-accent)] font-medium hover:underline">
+          <Link href="/sign-up" className="text-indigo-600 font-medium hover:underline">
             Create one
           </Link>
         </p>

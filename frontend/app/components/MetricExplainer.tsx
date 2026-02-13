@@ -39,17 +39,17 @@ export function MetricExplainer({ metrics }: { metrics: string[] }) {
   if (relevantMetrics.length === 0) return null
 
   return (
-    <details className="border border-[var(--border)] rounded-lg mt-4">
-      <summary className="px-4 py-2.5 cursor-pointer text-xs font-medium text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition">
+    <details className="border border-slate-200 rounded-lg mt-4">
+      <summary className="px-4 py-2.5 cursor-pointer text-xs font-medium text-slate-500 hover:text-slate-700 transition">
         What do these metrics mean?
       </summary>
-      <div className="px-4 pb-3 pt-1 space-y-3 border-t border-[var(--border)]">
+      <div className="px-4 pb-3 pt-1 space-y-3 border-t border-slate-200">
         {relevantMetrics.map(key => {
           const metric = METRIC_EXPLANATIONS[key]
           return (
             <div key={key}>
-              <p className="text-xs font-semibold text-[var(--text-primary)]">{metric.label}</p>
-              <p className="text-xs text-[var(--text-tertiary)] leading-relaxed mt-0.5">{metric.explanation}</p>
+              <p className="text-xs font-semibold text-slate-700">{metric.label}</p>
+              <p className="text-xs text-slate-500 leading-relaxed mt-0.5">{metric.explanation}</p>
             </div>
           )
         })}

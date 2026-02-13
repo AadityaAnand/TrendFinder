@@ -103,14 +103,7 @@ async function getHypotheses(): Promise<{ items: HypothesisItem[]; snapshotTime:
     }
   })
 
-  items.sort((a, b) => {
-    const statusOrder: Record<string, number> = { valid: 0, uncertain: 1, topic_only: 2, rejected: 3 }
-    const sa = statusOrder[a.hypothesis_status] ?? 2
-    const sb = statusOrder[b.hypothesis_status] ?? 2
-    if (sa !== sb) return sa - sb
-    if (a.qualified !== b.qualified) return a.qualified ? -1 : 1
-    return b.momentum_score - a.momentum_score
-  })
+  items.sort((a, b) => b.momentum_score - a.momentum_score)
 
   return { items, snapshotTime: snapshot.run_at }
 }
@@ -126,14 +119,9 @@ export default async function ExplorePage({
   const query = params.q?.trim().toLowerCase() || ''
   const { items: allItems, snapshotTime } = await getHypotheses()
 
-  const defaultHidden = selectedStatus === 'all'
-  let filtered = defaultHidden
-    ? allItems.filter(i => i.hypothesis_status !== 'topic_only')
-    : selectedStatus === 'topic_only'
-      ? allItems.filter(i => i.hypothesis_status === 'topic_only')
-      : selectedStatus !== 'all'
-        ? allItems.filter(i => i.hypothesis_status === selectedStatus)
-        : allItems
+  let filtered = selectedStatus === 'all'
+    ? allItems
+    : allItems.filter(i => i.hypothesis_status === selectedStatus)
 
   if (selectedStage !== 'all') {
     filtered = filtered.filter(i => i.stage === selectedStage && i.comparable && i.stage_confidence >= 0.5)
@@ -159,15 +147,15 @@ export default async function ExplorePage({
   const topicCount = allItems.filter(i => i.hypothesis_status === 'topic_only').length
 
   return (
-    <div className="min-h-screen bg-[var(--bg-0)]">
+    <div className="min-h-screen bg-white">
       <div className="max-w-3xl mx-auto px-6 py-12">
         <header className="mb-8">
-          <h1 className="text-2xl font-semibold text-[var(--text-primary)] tracking-tight">Explore</h1>
-          <p className="text-sm text-[var(--text-secondary)] mt-1">
-            {allItems.length} signal{allItems.length !== 1 ? 's' : ''} analyzed &middot; {validCount} valid hypotheses
+          <h1 className="text-2xl font-semibold text-slate-900 tracking-tight">Trend Library</h1>
+          <p className="text-sm text-slate-500 mt-1">
+            All detected trends, updated daily &middot; {allItems.length} trend{allItems.length !== 1 ? 's' : ''}
           </p>
           {snapshotTime && (
-            <p className="text-xs text-[var(--text-tertiary)] mt-0.5">
+            <p className="text-xs text-slate-400 mt-0.5">
               Last updated {new Date(snapshotTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
             </p>
           )}
@@ -178,8 +166,8 @@ export default async function ExplorePage({
             type="text"
             name="q"
             defaultValue={query}
-            placeholder="Search hypotheses..."
-            className="w-full px-4 py-2.5 border rounded-xl text-sm transition bg-[var(--surface)] border-[var(--border-strong)] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:border-transparent"
+            placeholder="Search trends..."
+            className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 transition focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
           />
           {selectedStatus !== 'all' && <input type="hidden" name="status" value={selectedStatus} />}
           {selectedStage !== 'all' && <input type="hidden" name="stage" value={selectedStage} />}
@@ -198,18 +186,18 @@ export default async function ExplorePage({
                 href={buildUrl({ status: f.key })}
                 className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition border ${
                   isActive
-                    ? 'bg-[var(--accent)] text-white border-[var(--accent)]'
-                    : 'bg-[var(--surface)] text-[var(--text-secondary)] border-[var(--border)] hover:border-[var(--border-accent)] hover:bg-[var(--surface)]'
+                    ? 'bg-indigo-600 text-white border-indigo-600'
+                    : 'bg-white text-slate-600 border border-slate-200 hover:border-slate-300'
                 }`}
               >
                 {f.label}
-                <span className={`ml-1 text-[10px] ${isActive ? 'text-[var(--text-tertiary)]' : 'text-[var(--text-tertiary)]'}`}>{count}</span>
+                <span className={`ml-1 text-[10px] ${isActive ? 'text-indigo-200' : 'text-slate-400'}`}>{count}</span>
               </Link>
             )
           })}
         </div>
 
-        <div className="flex items-center gap-1.5 mb-6 overflow-x-auto pb-1">
+        <div className="flex items-center gap-1.5 mb-4 overflow-x-auto pb-1">
           {STAGE_FILTERS.map(sf => {
             const isActive = sf.key === selectedStage
             return (
@@ -218,8 +206,8 @@ export default async function ExplorePage({
                 href={buildUrl({ stage: sf.key })}
                 className={`shrink-0 px-2.5 py-1 rounded-md text-[11px] font-medium transition border ${
                   isActive
-                    ? 'bg-[var(--accent)] text-white border-[var(--accent)]'
-                    : 'bg-[var(--surface)] text-[var(--text-secondary)] border-[var(--border)] hover:border-[var(--border-accent)]'
+                    ? 'bg-indigo-600 text-white border-indigo-600'
+                    : 'bg-white text-slate-500 border border-slate-200 hover:border-slate-300'
                 }`}
               >
                 {sf.label}
@@ -228,35 +216,41 @@ export default async function ExplorePage({
           })}
         </div>
 
-        {(query || selectedStage !== 'all' || selectedStatus !== 'all') && (
-          <div className="flex items-center gap-2 mb-4 text-xs text-[var(--text-secondary)]">
-            <span>{filtered.length} result{filtered.length !== 1 ? 's' : ''}</span>
-            <Link href="/explore" className="text-[var(--text-accent)] hover:text-[var(--text-accent)] underline">Clear</Link>
-          </div>
-        )}
+        <div className="flex items-center gap-2 mb-6 text-xs text-slate-400">
+          <span>Sorted by momentum</span>
+          {(query || selectedStage !== 'all' || selectedStatus !== 'all') && (
+            <>
+              <span>&middot;</span>
+              <span>{filtered.length} result{filtered.length !== 1 ? 's' : ''}</span>
+              <Link href="/explore" className="text-indigo-600 hover:text-indigo-700 underline ml-1">Clear</Link>
+            </>
+          )}
+        </div>
 
         {filtered.length === 0 ? (
-          <div className="border border-[var(--border)] rounded-xl p-10 text-center">
+          <div className="border border-slate-200 rounded-xl p-10 text-center">
             {allItems.length === 0 ? (
               <>
-                <p className="text-sm font-medium text-[var(--text-secondary)] mb-2">No signals detected yet</p>
-                <p className="text-xs text-[var(--text-secondary)] mb-4 max-w-sm mx-auto">
-                  Rishi collects signals daily at 6:00 AM UTC. Hypotheses will appear here after the pipeline runs.
+                <p className="text-sm font-medium text-slate-900 mb-2">No signals detected yet</p>
+                <p className="text-xs text-slate-500 mb-4 max-w-sm mx-auto">
+                  Rishi collects signals daily at 6:00 AM UTC. Trends will appear here after the pipeline runs.
                 </p>
-                <Link href="/method" className="text-xs text-[var(--text-accent)] font-medium">How Rishi works</Link>
+                <Link href="/method" className="text-xs text-indigo-600 font-medium">How Rishi works</Link>
               </>
             ) : (
-              <p className="text-sm text-[var(--text-secondary)]">No hypotheses match these filters.</p>
+              <p className="text-sm text-slate-500">No trends match these filters.</p>
             )}
           </div>
         ) : (
           <div className="space-y-2">
             {filtered.map((item) => {
+              const isTopicOnly = item.hypothesis_status === 'topic_only'
+
               const statusColors: Record<string, string> = {
-                valid: 'text-[var(--text-accent)] bg-[var(--accent-subtle)]',
-                uncertain: 'text-amber-400 bg-amber-900/20',
-                topic_only: 'text-[var(--text-secondary)] bg-[var(--surface)]',
-                rejected: 'text-red-400 bg-red-900/20',
+                valid: 'text-indigo-600 bg-indigo-50',
+                uncertain: 'text-amber-600 bg-amber-50',
+                topic_only: 'text-slate-400 bg-slate-100',
+                rejected: 'text-red-600 bg-red-50',
               }
               const statusLabel: Record<string, string> = {
                 valid: 'Valid',
@@ -269,10 +263,10 @@ export default async function ExplorePage({
                 <Link
                   key={item.trend_id}
                   href={`/trends/${item.trend_id}`}
-                  className="block border border-[var(--border)] rounded-xl p-4 hover:border-[var(--border-strong)] transition group"
+                  className={`block bg-white border border-slate-200 rounded-xl p-4 hover:border-slate-300 hover:shadow-sm transition group ${isTopicOnly ? 'opacity-60' : ''}`}
                 >
                   <div className="flex items-start justify-between gap-3 mb-1">
-                    <h3 className="text-sm font-semibold text-[var(--text-primary)] group-hover:text-[var(--text-accent)] transition-colors leading-snug">
+                    <h3 className="text-sm font-semibold text-slate-900 group-hover:text-indigo-600 transition-colors leading-snug">
                       {item.display_title}
                     </h3>
                     <div className="flex items-center gap-1.5 shrink-0">
@@ -280,16 +274,16 @@ export default async function ExplorePage({
                         {statusLabel[item.hypothesis_status] || 'Unknown'}
                       </span>
                       {item.qualified && (
-                        <span className="text-[10px] font-medium text-[var(--text-accent)] bg-[var(--accent-subtle)] px-2 py-0.5 rounded-full">Qualified</span>
+                        <span className="text-[10px] font-medium text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">Qualified</span>
                       )}
                     </div>
                   </div>
 
-                  {item.hypothesis_summary && item.hypothesis_status !== 'topic_only' && (
-                    <p className="text-xs text-[var(--text-secondary)] leading-relaxed line-clamp-2 mb-2">{item.hypothesis_summary}</p>
+                  {item.hypothesis_summary && !isTopicOnly && (
+                    <p className="text-xs text-slate-600 leading-relaxed line-clamp-2 mb-2">{item.hypothesis_summary}</p>
                   )}
 
-                  <div className="flex items-center gap-3 text-xs text-[var(--text-tertiary)]">
+                  <div className="flex items-center gap-3 text-xs text-slate-400">
                     <span>{item.signal_count} signal{item.signal_count !== 1 ? 's' : ''}</span>
                     {item.source_count > 0 && <span>{item.source_count} source{item.source_count !== 1 ? 's' : ''}</span>}
                     {item.momentum_score > 0 && <span>{(item.momentum_score * 100).toFixed(0)}% momentum</span>}

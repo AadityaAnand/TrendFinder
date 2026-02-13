@@ -9,8 +9,8 @@ interface MetricPillProps {
 export function MetricPill({ label, value, className = '' }: MetricPillProps) {
   return (
     <div className={`flex items-center gap-1.5 text-xs ${className}`}>
-      <span className="text-[var(--text-tertiary)] font-medium">{label}</span>
-      <span className="text-[var(--text-primary)] font-semibold">{value}</span>
+      <span className="text-slate-500 font-medium">{label}</span>
+      <span className="text-slate-800 font-semibold">{value}</span>
     </div>
   )
 }
@@ -29,16 +29,16 @@ export function EvidenceDots({ sourceCount, signalQuality }: EvidenceDotsProps) 
 
   return (
     <div className="flex items-center gap-1.5 text-xs">
-      <span className="text-[var(--text-tertiary)] font-medium">Evidence</span>
+      <span className="text-slate-500 font-medium">Evidence</span>
       <span className="flex gap-0.5">
         {[1, 2, 3].map(i => (
           <span
             key={i}
-            className={`w-1.5 h-1.5 rounded-full ${i <= level ? colors[level - 1] : 'bg-[var(--border)]'}`}
+            className={`w-1.5 h-1.5 rounded-full ${i <= level ? colors[level - 1] : 'bg-slate-200'}`}
           />
         ))}
       </span>
-      <span className="text-[var(--text-secondary)]">{labels[level - 1]}</span>
+      <span className="text-slate-600">{labels[level - 1]}</span>
     </div>
   )
 }

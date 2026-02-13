@@ -1,29 +1,30 @@
 @import "tailwindcss";
 
 :root {
-  --bg-0: #05070C;
-  --bg-1: #0B0E17;
-  --bg-2: #111827;
-  --bg-3: #1A2035;
+  --bg-0: #FFFFFF;
+  --bg-1: #F8F9FB;
+  --bg-2: #F1F3F6;
+  --bg-3: #E8EBF0;
 
-  --surface: #0F1320;
-  --surface-raised: #141929;
-  --surface-hover: #181D2E;
+  --surface: #FFFFFF;
+  --surface-raised: #F8F9FB;
+  --surface-hover: #F1F3F6;
 
-  --border: rgba(255, 255, 255, 0.06);
-  --border-strong: rgba(255, 255, 255, 0.10);
-  --border-accent: rgba(99, 102, 241, 0.25);
+  --border: #E5E7EB;
+  --border-strong: #D1D5DB;
+  --border-accent: rgba(79, 70, 229, 0.2);
 
-  --text-primary: #F1F3F8;
-  --text-secondary: #9CA3B8;
-  --text-tertiary: #5C6478;
-  --text-accent: #818CF8;
+  --text-primary: #111827;
+  --text-secondary: #4B5563;
+  --text-tertiary: #9CA3AF;
+  --text-muted: #D1D5DB;
+  --text-accent: #4F46E5;
 
-  --accent: #6366F1;
-  --accent-hover: #7C7FF7;
-  --accent-muted: #818CF8;
-  --accent-subtle: rgba(99, 102, 241, 0.12);
-  --accent-glow: rgba(99, 102, 241, 0.08);
+  --accent: #4F46E5;
+  --accent-hover: #4338CA;
+  --accent-muted: #6366F1;
+  --accent-subtle: rgba(79, 70, 229, 0.06);
+  --accent-glow: rgba(79, 70, 229, 0.04);
 
   --background: var(--bg-0);
   --foreground: var(--text-primary);
@@ -40,7 +41,7 @@
 }
 
 ::selection {
-  background: rgba(99, 102, 241, 0.3);
+  background: rgba(79, 70, 229, 0.15);
   color: var(--text-primary);
 }
 
@@ -53,7 +54,7 @@ body {
 }
 
 .rishi-gradient-text {
-  background: linear-gradient(135deg, #818CF8 0%, #06B6D4 100%);
+  background: linear-gradient(135deg, #4F46E5 0%, #0EA5E9 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -62,26 +63,26 @@ body {
 .rishi-card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: 12px;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .rishi-card:hover {
   border-color: var(--border-strong);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 1px 8px rgba(0, 0, 0, 0.06);
 }
 
 .rishi-card-highlight {
   background: var(--surface);
   border: 1px solid var(--border-accent);
-  border-radius: 16px;
-  box-shadow: 0 0 32px var(--accent-glow);
+  border-radius: 12px;
+  box-shadow: 0 1px 8px var(--accent-glow);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .rishi-card-highlight:hover {
-  border-color: rgba(99, 102, 241, 0.35);
-  box-shadow: 0 0 48px rgba(99, 102, 241, 0.12);
+  border-color: rgba(79, 70, 229, 0.3);
+  box-shadow: 0 2px 12px rgba(79, 70, 229, 0.08);
 }
 
 .rishi-section {
@@ -94,18 +95,16 @@ body {
   justify-content: center;
   background: var(--accent);
   color: white;
-  padding: 0.625rem 1.5rem;
-  border-radius: 10px;
+  padding: 0.5rem 1.25rem;
+  border-radius: 8px;
   font-size: 0.875rem;
   font-weight: 600;
   letter-spacing: -0.01em;
-  transition: background 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
-  box-shadow: 0 0 16px rgba(99, 102, 241, 0.2);
+  transition: background 0.15s ease, transform 0.1s ease;
 }
 
 .rishi-btn-primary:hover {
   background: var(--accent-hover);
-  box-shadow: 0 0 24px rgba(99, 102, 241, 0.3);
 }
 
 .rishi-btn-primary:active {
@@ -123,18 +122,18 @@ body {
   justify-content: center;
   background: transparent;
   color: var(--text-secondary);
-  padding: 0.625rem 1.5rem;
-  border-radius: 10px;
+  padding: 0.5rem 1.25rem;
+  border-radius: 8px;
   font-size: 0.875rem;
   font-weight: 600;
   letter-spacing: -0.01em;
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--border);
   transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
 .rishi-btn-secondary:hover {
-  background: var(--surface);
-  border-color: var(--text-tertiary);
+  background: var(--bg-1);
+  border-color: var(--border-strong);
   color: var(--text-primary);
 }
 
@@ -157,7 +156,7 @@ body {
 }
 
 .rishi-btn-ghost:hover {
-  background: var(--accent-subtle);
+  background: var(--bg-1);
   color: var(--text-primary);
 }
 
@@ -170,16 +169,16 @@ body {
   font-weight: 500;
   letter-spacing: 0.01em;
   border: 1px solid var(--border);
-  background: var(--surface);
+  background: var(--bg-1);
   color: var(--text-secondary);
 }
 
 .rishi-input {
   width: 100%;
-  padding: 0.625rem 0.875rem;
-  background: var(--surface);
-  border: 1px solid var(--border-strong);
-  border-radius: 10px;
+  padding: 0.5rem 0.75rem;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 8px;
   font-size: 0.875rem;
   color: var(--text-primary);
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
@@ -198,12 +197,4 @@ body {
 .accordion-content {
   overflow: hidden;
   transition: max-height 0.3s ease;
-}
-
-input[type="text"],
-input[type="email"],
-input[type="password"],
-input[type="search"],
-input[type="url"] {
-  color-scheme: dark;
 }
