@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from supabase import create_client, Client
 from collections import Counter
 import re
+from content_classifier import classify_content_type, evaluate_cluster_quality
 
 load_dotenv()
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -283,6 +284,10 @@ def group_signals_into_trends(signals, duplicate_ids, snapshot_id=None):
     """
     unique_signals = [s for s in signals if s['id'] not in duplicate_ids]
 
+    # Classify content types for all signals
+    for signal in unique_signals:
+        signal['content_type'] = classify_content_type(signal)
+
     normalized_scores, percentiles = normalize_score_by_source(unique_signals, snapshot_id)
 
     # Step 1: Extract topic phrases from each signal
@@ -446,6 +451,12 @@ def group_signals_into_trends(signals, duplicate_ids, snapshot_id=None):
         sources = set(s.get('source', '') for s in trend_signals_list)
         trend['source_count'] = len(sources)
         trend['sources'] = list(sources)
+
+        # Garbage cluster rejection — skip clusters that are mostly noise
+        is_garbage, garbage_reasons = evaluate_cluster_quality(trend_signals_list)
+        if is_garbage:
+            print(f"Garbage rejected: '{trend['keyword']}' ({', '.join(garbage_reasons)})")
+            continue
 
         # Quality label: high if multi-source and 3+ signals, medium if 2+ signals, low otherwise
         if len(sources) >= MIN_SOURCES_FOR_HIGH_QUALITY and trend['signal_count'] >= 3:

@@ -8,6 +8,10 @@ from typing import Optional
 from dotenv import load_dotenv
 from supabase import create_client, Client
 from groq import Groq
+from content_classifier import (
+    is_narrative_title, is_generic_non_market,
+    NARRATIVE_REGEX, GENERIC_NON_MARKET,
+)
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
@@ -23,27 +27,6 @@ groq_client = Groq(api_key=GROQ_API_KEY)
 HYPOTHESIS_VERSION = 'hypothesis-v1'
 PROMPT_VERSION = 'hypothesis-prompt-v1'
 MODEL_NAME = 'llama-3.3-70b-versatile'
-
-NARRATIVE_PATTERNS = [
-    r'^(I|We|My)\b',
-    r'\bunpopular opinion\b',
-    r'\bstory[\s-]?time\b',
-    r'\bconfession\b',
-    r'\brant\b',
-    r'\bjust launched\b',
-    r'\bshow hn\b',
-    r'\bask hn\b',
-    r'\btil\b',
-    r'\btoday i learned\b',
-]
-NARRATIVE_REGEX = re.compile('|'.join(NARRATIVE_PATTERNS), re.IGNORECASE)
-
-GENERIC_NON_MARKET = {
-    'junior developer', 'senior developer', 'tech interview', 'career advice',
-    'salary', 'resume', 'job hunting', 'layoff', 'work life balance',
-    'burnout', 'imposter syndrome', 'side project', 'weekend project',
-    'meme', 'humor', 'funny', 'unpopular opinion', 'hot take',
-}
 
 DEMAND_PATTERNS = [
     r'\bhow to\b', r'\blooking for\b', r'\bbenchmark\b', r'\bcomparison\b',
@@ -144,18 +127,6 @@ def get_existing_hypothesis(snapshot_id: str, trend_id: str) -> Optional[dict]:
         .limit(1) \
         .execute()
     return response.data[0] if response.data else None
-
-
-def is_narrative_title(title: str) -> bool:
-    return bool(NARRATIVE_REGEX.search(title))
-
-
-def is_generic_non_market(name: str) -> bool:
-    lower = name.lower().strip()
-    for term in GENERIC_NON_MARKET:
-        if term in lower:
-            return True
-    return False
 
 
 def check_topic_only_deterministic(trend_name: str, evidence: list[dict]) -> tuple[bool, list[str]]:

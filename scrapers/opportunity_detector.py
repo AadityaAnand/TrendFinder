@@ -6,6 +6,10 @@ from typing import Optional
 
 from dotenv import load_dotenv
 from supabase import create_client, Client
+from demand_classifier import (
+    classify_demand_layer1,
+    DEMAND_REGEX,
+)
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
@@ -16,31 +20,6 @@ MIN_INDEPENDENT_ARTIFACTS = 2
 MIN_STAGE_CONFIDENCE = 0.6
 MIN_DEMAND_HITS = 1
 MIN_HYPOTHESIS_CONFIDENCE = 0.4
-
-DEMAND_PATTERNS = [
-    r'\bhow to\b',
-    r'\blooking for\b',
-    r'\bbenchmark\b',
-    r'\bcomparison\b',
-    r'\bmigrat(?:e|ion|ing)\b',
-    r'\bproduction\b',
-    r'\bscaling\b',
-    r'\bpric(?:e|ing)\b',
-    r'\blimitation[s]?\b',
-    r'\bproblem[s]?\b',
-    r'\bissue[s]?\b',
-    r'\balternative\b',
-    r'\bopen[- ]?source alternative\b',
-    r'\bpain[- ]?point[s]?\b',
-    r'\bfrustrat(?:ed|ing|ion)\b',
-    r'\bwish(?:ing|ed)?\b',
-    r'\bneed[s]?\b',
-    r'\bwant[s]?\b',
-    r'\breplace(?:ment)?\b',
-    r'\bself[- ]?host(?:ed|ing)?\b',
-]
-
-DEMAND_REGEX = re.compile('|'.join(DEMAND_PATTERNS), re.IGNORECASE)
 
 WRAPPER_DOMAINS = {'news.ycombinator.com', 'reddit.com', 'www.reddit.com',
                    'twitter.com', 'x.com', 'facebook.com', 'linkedin.com'}
@@ -254,17 +233,21 @@ def check_confidence_gate(lifecycle: Optional[dict], is_proto: bool = False) -> 
 
 
 def detect_demand_signals(signals: list[dict]) -> tuple[int, list[dict]]:
+    """Detect demand signals using the enhanced two-layer classifier (Layer 1 only in this context)."""
     demand_hits = 0
     demand_examples = []
 
     for signal in signals:
         title = signal.get('title', '')
-        if DEMAND_REGEX.search(title):
+        content = signal.get('content', '')
+        is_demand, matched_patterns = classify_demand_layer1(title, content)
+        if is_demand:
             demand_hits += 1
             demand_examples.append({
                 'title': title,
                 'url': signal.get('url', ''),
-                'source': signal.get('source', '')
+                'source': signal.get('source', ''),
+                'matched_patterns': matched_patterns,
             })
 
     return demand_hits, demand_examples

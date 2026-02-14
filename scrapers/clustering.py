@@ -7,6 +7,7 @@ import numpy as np
 
 from dotenv import load_dotenv
 from supabase import create_client, Client
+from content_classifier import classify_content_type, evaluate_cluster_quality
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
@@ -140,9 +141,18 @@ def get_canonical_signals_with_embeddings(
     for s in signals:
         if s['id'] in embedding_map and s['id'] not in duplicate_ids:
             s['embedding'] = embedding_map[s['id']]
+            s['content_type'] = classify_content_type(s)
             result.append(s)
 
     logger.info(f"Excluded {len(duplicate_ids)} duplicates from clustering")
+
+    # Log content type distribution
+    type_counts: dict[str, int] = {}
+    for s in result:
+        ct = s.get('content_type', 'other')
+        type_counts[ct] = type_counts.get(ct, 0) + 1
+    logger.info(f"Content type distribution: {type_counts}")
+
     return result
 
 
@@ -493,6 +503,11 @@ def run_embedding_clustering(lookback_days: int = 14) -> dict:
 
         cluster_name = generate_cluster_name(members)
 
+        # Evaluate cluster quality (garbage rejection)
+        is_garbage, garbage_reasons = evaluate_cluster_quality(members)
+        if is_garbage:
+            logger.info(f"   Cluster {label}: GARBAGE '{cluster_name}' ({', '.join(garbage_reasons)})")
+
         sorted_members = sorted(members, key=lambda s: s.get('score', 0), reverse=True)
         representative_ids = [s['id'] for s in sorted_members[:3]]
 
@@ -526,8 +541,10 @@ def run_embedding_clustering(lookback_days: int = 14) -> dict:
             'high_confidence_count': momentum_stats['strong_evidence_count'],
             'min_cluster_size': MIN_CLUSTER_SIZE,
             'min_samples': MIN_SAMPLES,
-            'is_proto_cluster': is_proto,
-            'representative_signal_ids': representative_ids
+            'is_proto_cluster': is_proto or is_garbage,
+            'representative_signal_ids': representative_ids,
+            'is_garbage': is_garbage,
+            'garbage_reasons': garbage_reasons if is_garbage else None,
         }
         cluster_resp = supabase.table('trend_clusters') \
             .upsert(cluster_data, on_conflict='snapshot_id,cluster_label') \
@@ -582,7 +599,7 @@ def run_embedding_clustering(lookback_days: int = 14) -> dict:
                 f"strong={strong_count}/{len(members)} ({100*strong_count/len(members):.0f}%)"
             )
 
-        if not is_proto:
+        if not is_proto and not is_garbage:
             snapshot_item = {
                 'snapshot_id': snapshot_id,
                 'trend_id': trend_id,
@@ -614,6 +631,7 @@ def run_embedding_clustering(lookback_days: int = 14) -> dict:
             'strong_evidence_count': strong_count,
             'momentum': momentum_stats['momentum'],
             'is_proto': is_proto,
+            'is_garbage': is_garbage,
             'is_new': match_meta['lineage_event'] == 'new'
         })
 
@@ -626,7 +644,11 @@ def run_embedding_clustering(lookback_days: int = 14) -> dict:
     logger.info(f"  - New trends: {new_trends}")
     logger.info(f"Noise signals: {list(cluster_labels).count(-1)}")
 
-    proto_count = sum(1 for r in cluster_results if r['is_proto'])
+    garbage_count = sum(1 for r in cluster_results if r['is_garbage'])
+    if garbage_count:
+        logger.info(f"Garbage clusters rejected: {garbage_count}")
+
+    proto_count = sum(1 for r in cluster_results if r['is_proto'] and not r['is_garbage'])
     if proto_count:
         logger.info(f"Proto-clusters (not lifecycled): {proto_count}")
 
@@ -646,6 +668,7 @@ def run_embedding_clustering(lookback_days: int = 14) -> dict:
         'trends': continued_trends + new_trends,
         'new_trends': new_trends,
         'continued_trends': continued_trends,
+        'garbage_rejected': garbage_count,
         'snapshot_id': snapshot_id,
         'strong_evidence_ratio': total_strong / total_members if total_members > 0 else 0
     }
