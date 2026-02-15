@@ -14,6 +14,7 @@ Saturation components:
 
 import os
 import re
+import json
 import logging
 import statistics
 from typing import Optional
@@ -101,6 +102,16 @@ WEDGE_PATTERNS = {
         r'\bself[- ]host\b', r'\bmarketplace\b', r'\bfreemium\b',
     ],
 }
+
+# Entity extraction patterns
+GITHUB_REPO_PATTERN = re.compile(r'github\.com/([a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+)', re.IGNORECASE)
+TOOL_NAME_PATTERN = re.compile(
+    r'(?:using|with|vs\.?|versus|alternative\s+to|replaced?\s+by|switched?\s+to|migrat\w*\s+to)\s+([A-Z][a-zA-Z0-9]+)',
+)
+FUNDING_PATTERN = re.compile(
+    r'(?:\$\d+(?:\.\d+)?[MBK]|Series\s+[A-Z]|raised\s+\$|funding|YC\s+[WSF]\d{2}|backed\s+by|Y\s+Combinator)',
+    re.IGNORECASE
+)
 
 _supabase: Optional[Client] = None
 
@@ -472,6 +483,72 @@ def detect_wedges(
 
 
 # ============================================================
+# ENTITY EXTRACTION
+# ============================================================
+
+def extract_entities_from_signals(signals: list[dict]) -> dict:
+    """Extract real competition data from signal evidence."""
+    open_source_repos = set()
+    mentioned_tools = set()
+    funding_mentions = []
+
+    # Common generic words to exclude from tool names
+    generic_words = {
+        'the', 'this', 'that', 'with', 'from', 'using', 'how', 'why', 'what',
+        'new', 'best', 'top', 'here', 'now', 'just', 'like', 'use', 'get',
+        'show', 'ask', 'tell', 'does', 'should', 'would', 'could', 'will',
+        'not', 'but', 'and', 'for', 'are', 'was', 'has', 'had', 'been',
+        'more', 'some', 'any', 'all', 'also', 'than', 'then', 'when',
+    }
+
+    for signal in signals:
+        title = signal.get('title', '')
+        url = signal.get('url', '')
+        content = signal.get('content', '') or signal.get('summary', '') or ''
+        text = f"{title} {content[:500]}"
+
+        # 1. GitHub repos from URLs
+        if url:
+            repo_match = GITHUB_REPO_PATTERN.search(url)
+            if repo_match:
+                open_source_repos.add(repo_match.group(1).lower())
+
+        # Also find GitHub repos mentioned in text
+        for repo_match in GITHUB_REPO_PATTERN.finditer(text):
+            open_source_repos.add(repo_match.group(1).lower())
+
+        # 2. Tool/product names
+        for tool_match in TOOL_NAME_PATTERN.finditer(text):
+            tool_name = tool_match.group(1).strip()
+            if len(tool_name) >= 2 and tool_name.lower() not in generic_words:
+                mentioned_tools.add(tool_name)
+
+        # 3. Funding mentions
+        for funding_match in FUNDING_PATTERN.finditer(text):
+            context = text[max(0, funding_match.start() - 30):funding_match.end() + 30].strip()
+            context = context[:120]
+            if context and context not in funding_mentions and len(funding_mentions) < 5:
+                funding_mentions.append(context)
+
+    # Determine confidence based on entity counts
+    total_entities = len(open_source_repos) + len(mentioned_tools) + len(funding_mentions)
+    if total_entities >= 5:
+        entity_confidence = 'high'
+    elif total_entities >= 2:
+        entity_confidence = 'medium'
+    else:
+        entity_confidence = 'low'
+
+    return {
+        'existing_solutions_count': len(open_source_repos) + len(mentioned_tools),
+        'open_source_repos': sorted(open_source_repos)[:20],
+        'mentioned_tools': sorted(mentioned_tools)[:15],
+        'funding_mentions': funding_mentions[:5],
+        'entity_confidence': entity_confidence,
+    }
+
+
+# ============================================================
 # MAIN COMPUTATION
 # ============================================================
 
@@ -520,6 +597,9 @@ def compute_competitive_intelligence(trend_id: str, snapshot_id: str) -> dict:
     # Compute saturation
     saturation = compute_saturation(extracted_signals)
 
+    # Extract real entities from signals
+    entities = extract_entities_from_signals(signals)
+
     # Store competitive intelligence
     intel_record = {
         'snapshot_id': snapshot_id,
@@ -530,7 +610,12 @@ def compute_competitive_intelligence(trend_id: str, snapshot_id: str) -> dict:
         'confidence_reasons': saturation['confidence_reasons'],
         'signals_used': saturation['signals_used'],
         'source_types_used': saturation['source_types_used'],
-        'method_version': METHOD_VERSION
+        'method_version': METHOD_VERSION,
+        'existing_solutions_count': entities['existing_solutions_count'],
+        'open_source_repos': json.dumps(entities['open_source_repos']),
+        'mentioned_tools': json.dumps(entities['mentioned_tools']),
+        'funding_mentions': json.dumps(entities['funding_mentions']),
+        'entity_confidence': entities['entity_confidence'],
     }
 
     supabase.table('trend_competitive_intelligence') \

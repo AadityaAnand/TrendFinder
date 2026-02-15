@@ -5,6 +5,9 @@ from supabase import create_client, Client
 from collections import Counter
 import re
 from content_classifier import classify_content_type, evaluate_cluster_quality
+from demand_classifier import classify_demand_layer1
+from stability_scorer import compute_stability_score, update_snapshot_item_stability
+from negative_detector import detect_cluster_negative_signals
 
 load_dotenv()
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -12,7 +15,7 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 DETECTOR_VERSION = 'phrase-topic-v2'
-SCORING_VERSION = 'norm-p90-decay7d-v1'
+SCORING_VERSION = 'norm-p90-decay7d-div-demand-v2'
 LIFECYCLE_VERSION = 'lifecycle-v1'
 
 # Non-trend filter: reject trends that are just generic phrases or single headlines
@@ -405,7 +408,7 @@ def group_signals_into_trends(signals, duplicate_ids, snapshot_id=None):
         formatted_parts = [CASING_OVERRIDES.get(p, p.capitalize()) for p in parts]
         trend_name = ' '.join(formatted_parts)
 
-        # Calculate momentum
+        # Calculate momentum with source diversity and demand density
         weighted_scores = []
         for s in trend_signals:
             norm_score = normalized_scores.get(s['id'], 0.0)
@@ -413,11 +416,28 @@ def group_signals_into_trends(signals, duplicate_ids, snapshot_id=None):
             weighted_scores.append(norm_score * time_weight)
 
         signal_count = len(trend_signals)
-        momentum_score = sum(weighted_scores) / signal_count if signal_count > 0 else 0
+        engagement_score = sum(weighted_scores) / signal_count if signal_count > 0 else 0
 
         k = min(3, signal_count)
         topk_scores = sorted(weighted_scores, reverse=True)[:k]
         topk_mean = sum(topk_scores) / k if k > 0 else 0
+
+        # Source diversity: 1 source = 0, 2 = 0.5, 3+ = 1.0
+        trend_sources = set(s.get('source', '') for s in trend_signals)
+        source_diversity_factor = min(1.0, (len(trend_sources) - 1) * 0.5)
+
+        # Demand density from Layer 1 regex
+        demand_count = 0
+        for s in trend_signals:
+            is_demand, _ = classify_demand_layer1(s.get('title', ''))
+            if is_demand:
+                demand_count += 1
+        demand_ratio = demand_count / signal_count if signal_count > 0 else 0.0
+        avg_demand_prob = demand_count / signal_count if signal_count > 0 else 0.0
+        demand_density = avg_demand_prob * demand_ratio
+
+        # Composite momentum: 50% engagement + 30% source diversity + 20% demand density
+        momentum_score = 0.5 * engagement_score + 0.3 * source_diversity_factor + 0.2 * demand_density
 
         earliest_signal = min(trend_signals, key=lambda s: s['created_at'])
         first_seen = earliest_signal['created_at']
@@ -429,7 +449,10 @@ def group_signals_into_trends(signals, duplicate_ids, snapshot_id=None):
             'topk_mean': topk_mean,
             'topk_used': k,
             'signal_ids': signal_ids,
-            'first_seen': first_seen
+            'first_seen': first_seen,
+            'source_diversity_factor': source_diversity_factor,
+            'demand_density': demand_density,
+            'demand_signal_count': demand_count,
         })
 
     # Quality filter: reject non-trends and label quality
@@ -877,9 +900,38 @@ def save_trends_to_db(trends, snapshot_id):
                 trend['signal_count'],
                 trend.get('topk_mean', 0.0),
                 trend.get('topk_used', 0),
-                trend.get('keyword', '')
+                trend.get('keyword', ''),
+                source_diversity_factor=trend.get('source_diversity_factor'),
+                demand_density=trend.get('demand_density'),
+                demand_signal_count=trend.get('demand_signal_count'),
             )
             save_trend_evidence(snapshot_id, trend_id, trend['signal_ids'])
+
+            # Compute and store stability score
+            try:
+                stability_data = compute_stability_score(supabase, trend_id, snapshot_id)
+                update_snapshot_item_stability(supabase, snapshot_id, trend_id, stability_data)
+            except Exception as e:
+                print(f"Stability scoring failed for trend {trend_id}: {e}")
+
+            # Compute and store negative signal detection (Layer 1 only)
+            try:
+                signal_dicts = [{'id': sid, 'title': '', 'content': '', 'source': '', 'content_type': 'other'} for sid in trend['signal_ids']]
+                # Fetch actual titles for negative detection
+                sig_resp = supabase.table('raw_signals').select('id, title, content, source').in_('id', trend['signal_ids'][:20]).execute()
+                if sig_resp.data:
+                    signal_dicts = sig_resp.data
+                neg_result = detect_cluster_negative_signals(signal_dicts, use_llm=False)
+                supabase.table('trend_snapshot_items') \
+                    .update({
+                        'negative_signal_ratio': neg_result['negative_signal_ratio'],
+                        'negative_signal_count': neg_result['negative_signal_count'],
+                    }) \
+                    .eq('snapshot_id', snapshot_id) \
+                    .eq('trend_id', trend_id) \
+                    .execute()
+            except Exception as e:
+                print(f"Negative detection failed for trend {trend_id}: {e}")
 
             # Track lifecycle evolution with guards (uses stable trend_id)
             current_state = {
@@ -896,7 +948,8 @@ def save_trends_to_db(trends, snapshot_id):
     print(f"Saved {saved_count} trends to the database.")
     return saved_count
 
-def save_trend_snapshot_item(snapshot_id, trend_id, momentum_score, signal_count, top3_mean=0.0, topk_used=0, trend_keyword=''):
+def save_trend_snapshot_item(snapshot_id, trend_id, momentum_score, signal_count, top3_mean=0.0, topk_used=0, trend_keyword='',
+                            source_diversity_factor=None, demand_density=None, demand_signal_count=None):
     try:
         item_data = {
             'snapshot_id': snapshot_id,
@@ -906,7 +959,10 @@ def save_trend_snapshot_item(snapshot_id, trend_id, momentum_score, signal_count
             'top3_mean': top3_mean,
             'topk_used': topk_used,
             'trend_keyword': trend_keyword,
-            'scoring_version': SCORING_VERSION
+            'scoring_version': SCORING_VERSION,
+            'source_diversity_factor': source_diversity_factor,
+            'demand_density': demand_density,
+            'demand_signal_count': demand_signal_count,
         }
         supabase.table('trend_snapshot_items').insert(item_data).execute()
     except Exception as e:

@@ -8,13 +8,16 @@ import numpy as np
 from dotenv import load_dotenv
 from supabase import create_client, Client
 from content_classifier import classify_content_type, evaluate_cluster_quality
+from demand_classifier import classify_demand_layer1
+from stability_scorer import compute_stability_score, update_snapshot_item_stability
+from negative_detector import detect_cluster_negative_signals
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 DETECTOR_VERSION = 'embedding-cluster-v1'
-SCORING_VERSION = 'norm-p90-decay7d-v1'
+SCORING_VERSION = 'norm-p90-decay7d-div-demand-v2'
 LIFECYCLE_VERSION = 'lifecycle-v1'
 EMBEDDING_MODEL = 'all-MiniLM-L6-v2'
 
@@ -365,7 +368,11 @@ def calculate_cluster_momentum(
     now: datetime
 ) -> dict:
     if not signals:
-        return {'momentum': 0, 'top3_mean': 0, 'signal_count': 0, 'strong_evidence_count': 0}
+        return {
+            'momentum': 0, 'top3_mean': 0, 'signal_count': 0,
+            'strong_evidence_count': 0, 'source_diversity_factor': 0,
+            'demand_density': 0, 'demand_signal_count': 0,
+        }
 
     strong_signals = []
     for signal in signals:
@@ -382,18 +389,40 @@ def calculate_cluster_momentum(
         weight = calculate_signal_weight(signal, p90_params, now)
         weighted_scores.append(weight)
 
-    momentum = np.mean(weighted_scores) if weighted_scores else 0
+    engagement_score = float(np.mean(weighted_scores)) if weighted_scores else 0
 
     sorted_scores = sorted(weighted_scores, reverse=True)
     top_k = min(3, len(sorted_scores))
     top3_mean = np.mean(sorted_scores[:top_k]) if sorted_scores else 0
+
+    # Source diversity: 1 source = 0, 2 = 0.5, 3+ = 1.0
+    unique_sources = set(s.get('source', '') for s in signals)
+    source_diversity_factor = min(1.0, (len(unique_sources) - 1) * 0.5)
+
+    # Demand density from Layer 1 regex
+    demand_count = 0
+    total = len(signals)
+    demand_prob_sum = 0.0
+    for sig in signals:
+        is_demand, _ = classify_demand_layer1(sig.get('title', ''))
+        if is_demand:
+            demand_count += 1
+            demand_prob_sum += 1.0
+    avg_demand_prob = demand_prob_sum / total if total > 0 else 0.0
+    demand_density = avg_demand_prob * (demand_count / total) if total > 0 else 0.0
+
+    # Composite momentum: 50% engagement + 30% source diversity + 20% demand density
+    momentum = 0.5 * engagement_score + 0.3 * source_diversity_factor + 0.2 * demand_density
 
     return {
         'momentum': float(momentum),
         'top3_mean': float(top3_mean),
         'signal_count': len(signals),
         'strong_evidence_count': len(strong_signals),
-        'topk_used': top_k
+        'topk_used': top_k,
+        'source_diversity_factor': float(source_diversity_factor),
+        'demand_density': float(demand_density),
+        'demand_signal_count': demand_count,
     }
 
 
@@ -608,7 +637,10 @@ def run_embedding_clustering(lookback_days: int = 14) -> dict:
                 'top3_mean': momentum_stats['top3_mean'],
                 'topk_used': momentum_stats['topk_used'],
                 'trend_keyword': cluster_name,
-                'scoring_version': SCORING_VERSION
+                'scoring_version': SCORING_VERSION,
+                'source_diversity_factor': momentum_stats.get('source_diversity_factor'),
+                'demand_density': momentum_stats.get('demand_density'),
+                'demand_signal_count': momentum_stats.get('demand_signal_count'),
             }
             supabase.table('trend_snapshot_items') \
                 .upsert(snapshot_item, on_conflict='snapshot_id,trend_id') \
@@ -622,6 +654,28 @@ def run_embedding_clustering(lookback_days: int = 14) -> dict:
                         'signal_id': signal['id']
                     }, on_conflict='snapshot_id,trend_id,signal_id') \
                     .execute()
+
+            # Compute and store stability score
+            try:
+                stability_data = compute_stability_score(supabase, trend_id, snapshot_id)
+                update_snapshot_item_stability(supabase, snapshot_id, trend_id, stability_data)
+            except Exception as e:
+                logger.warning(f"Stability scoring failed for trend {trend_id}: {e}")
+
+            # Compute and store negative signal detection
+            try:
+                member_dicts = [{'id': s['id'], 'title': s.get('title', ''), 'content': s.get('content', ''), 'source': s.get('source', ''), 'content_type': s.get('content_type', 'other')} for s in members]
+                neg_result = detect_cluster_negative_signals(member_dicts, use_llm=False)
+                supabase.table('trend_snapshot_items') \
+                    .update({
+                        'negative_signal_ratio': neg_result['negative_signal_ratio'],
+                        'negative_signal_count': neg_result['negative_signal_count'],
+                    }) \
+                    .eq('snapshot_id', snapshot_id) \
+                    .eq('trend_id', trend_id) \
+                    .execute()
+            except Exception as e:
+                logger.warning(f"Negative detection failed for trend {trend_id}: {e}")
 
         cluster_results.append({
             'label': label,

@@ -109,7 +109,10 @@ def get_lifecycle_data(supabase: Client, snapshot_id: str, trend_ids: list[str])
             stage_confidence,
             acceleration_score,
             acceleration_comparable,
-            snapshots_seen
+            snapshots_seen,
+            days_seen,
+            momentum_change_pct,
+            time_gap_hours
         ''') \
         .eq('snapshot_id', snapshot_id) \
         .in_('trend_id', trend_ids) \
@@ -124,7 +127,10 @@ def get_lifecycle_data(supabase: Client, snapshot_id: str, trend_ids: list[str])
                 'stage_confidence': row['stage_confidence'],
                 'acceleration_score': row['acceleration_score'],
                 'acceleration_comparable': row['acceleration_comparable'],
-                'snapshots_seen': row['snapshots_seen']
+                'snapshots_seen': row['snapshots_seen'],
+                'days_seen': row.get('days_seen', 0),
+                'momentum_change_pct': row.get('momentum_change_pct'),
+                'time_gap_hours': row.get('time_gap_hours'),
             }
 
     return lifecycle
@@ -201,6 +207,23 @@ def get_supporting_signals(supabase: Client, snapshot_id: str, trend_id: str, li
         .execute()
 
     return details_resp.data or []
+
+
+def check_persistence_gate(lifecycle: Optional[dict]) -> tuple[bool, Optional[str]]:
+    """Trend must appear in >=2 distinct days OR show breakout acceleration."""
+    days_seen = lifecycle.get('days_seen', 0) if lifecycle else 0
+
+    if days_seen >= 2:
+        return True, None
+
+    # Breakout exception: momentum jump >2x in 24 hours
+    if lifecycle:
+        momentum_change = lifecycle.get('momentum_change_pct')
+        time_gap = lifecycle.get('time_gap_hours')
+        if momentum_change and time_gap and time_gap <= 24 and momentum_change > 100:
+            return True, None
+
+    return False, 'insufficient_persistence'
 
 
 def check_evidence_gate(artifact_count: int) -> tuple[bool, Optional[str]]:
@@ -408,6 +431,12 @@ def evaluate_trend_as_opportunity(
         'demand_strength': None,
         'rejection_reasons': []
     }
+
+    # Gate 0: Persistence — must appear in >=2 days or show breakout
+    persistence_ok, persistence_reason = check_persistence_gate(lifecycle)
+    if not persistence_ok:
+        result['rejection_reasons'].append(persistence_reason)
+        return result
 
     artifact_count = get_canonical_artifact_count(supabase, snapshot_id, trend_id)
     result['independent_artifact_count'] = artifact_count
