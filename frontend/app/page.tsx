@@ -77,7 +77,7 @@ export default function LandingPage() {
               </div>
               <h3 style={{ fontSize: 16, fontWeight: 600, color: '#111827', marginBottom: 8 }}>We analyze</h3>
               <p style={{ fontSize: 14, lineHeight: 1.7, color: '#4B5563' }}>
-                Trends are detected, scored, and classified by lifecycle stage.
+                Trends are detected, filtered for real demand, and qualified against strict evidence gates.
               </p>
             </div>
 
@@ -151,9 +151,9 @@ export default function LandingPage() {
                   <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
                 </svg>
               </div>
-              <h3 style={{ fontSize: 15, fontWeight: 600, color: '#111827', marginBottom: 6 }}>Lifecycle confidence</h3>
+              <h3 style={{ fontSize: 15, fontWeight: 600, color: '#111827', marginBottom: 6 }}>Plain English briefs</h3>
               <p style={{ fontSize: 14, lineHeight: 1.7, color: '#4B5563' }}>
-                Stage classification above 60% certainty.
+                Every opportunity is summarized in narrative form — no scores, no jargon.
               </p>
             </div>
 

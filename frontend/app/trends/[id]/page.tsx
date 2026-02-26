@@ -2,7 +2,8 @@ import { getServerSupabase, getLatestSnapshot, getHypothesisDisplayTitle, getTre
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { SourceBadge } from '../../components/SourceBadge'
-import { MetricExplainer } from '../../components/MetricExplainer'
+import { SignalQuote } from '../../components/SignalQuote'
+import { RiskIndicator } from '../../components/RiskIndicator'
 
 interface TrajectoryPoint {
   snapshot_id: string
@@ -73,6 +74,21 @@ interface OpportunityExplanationData {
   whats_the_risk: string | null
 }
 
+interface PreBriefData {
+  synthesis: string | null
+  synthesis_citations: { title: string; url: string; source: string }[] | null
+  persona_roles: string[] | null
+  persona_pain_points: { phrase: string; quote: string; source: string }[] | null
+  hypotheses: { idea: string; effort: string; audience: string }[] | null
+  competition_narrative: string | null
+  competition_repos: { name: string }[] | null
+  competition_tools: { name: string }[] | null
+  validation_experiments: { title: string; description: string; success_criteria: string; effort: string }[] | null
+  risk_narrative: string | null
+  risk_factors: { label: string; severity: string }[] | null
+  is_draft: boolean
+}
+
 interface TrendData {
   id: string
   theme: string
@@ -93,6 +109,7 @@ interface TrendData {
   wedges: WedgeData[]
   opportunity_explanation: OpportunityExplanationData | null
   updated_at: string | null
+  preBrief: PreBriefData | null
 }
 
 async function getTrendData(id: string): Promise<TrendData | null> {
@@ -293,6 +310,39 @@ async function getTrendData(id: string): Promise<TrendData | null> {
     }))
   }
 
+  // Fetch pre-generated brief (Phase 3)
+  let preBrief: PreBriefData | null = null
+  if (snapshot) {
+    const { data: briefRow } = await supabase
+      .from('opportunity_briefs')
+      .select('synthesis, synthesis_citations, persona_roles, persona_pain_points, hypotheses, competition_narrative, competition_repos, competition_tools, validation_experiments, risk_narrative, risk_factors, is_draft')
+      .eq('trend_id', id)
+      .eq('snapshot_id', snapshot.id)
+      .single()
+
+    if (briefRow && !briefRow.is_draft) {
+      const parseJ = (v: unknown, fallback: unknown) => {
+        if (!v) return fallback
+        if (typeof v === 'string') { try { return JSON.parse(v) } catch { return fallback } }
+        return v
+      }
+      preBrief = {
+        synthesis: briefRow.synthesis || null,
+        synthesis_citations: parseJ(briefRow.synthesis_citations, null) as PreBriefData['synthesis_citations'],
+        persona_roles: briefRow.persona_roles || null,
+        persona_pain_points: parseJ(briefRow.persona_pain_points, null) as PreBriefData['persona_pain_points'],
+        hypotheses: parseJ(briefRow.hypotheses, null) as PreBriefData['hypotheses'],
+        competition_narrative: briefRow.competition_narrative || null,
+        competition_repos: parseJ(briefRow.competition_repos, null) as PreBriefData['competition_repos'],
+        competition_tools: parseJ(briefRow.competition_tools, null) as PreBriefData['competition_tools'],
+        validation_experiments: parseJ(briefRow.validation_experiments, null) as PreBriefData['validation_experiments'],
+        risk_narrative: briefRow.risk_narrative || null,
+        risk_factors: parseJ(briefRow.risk_factors, null) as PreBriefData['risk_factors'],
+        is_draft: briefRow.is_draft,
+      }
+    }
+  }
+
   const finalTitle = getHypothesisDisplayTitle(hypothesis?.hypothesis_title, displayName, null, id)
 
   return {
@@ -315,15 +365,8 @@ async function getTrendData(id: string): Promise<TrendData | null> {
     wedges,
     opportunity_explanation,
     updated_at: snapshot?.run_at || null,
+    preBrief,
   }
-}
-
-const STAGE_PILLS: Record<string, { label: string; color: string }> = {
-  emerging: { label: 'Emerging', color: 'bg-blue-50 text-blue-700' },
-  rising: { label: 'Rising', color: 'bg-emerald-50 text-emerald-700' },
-  peaking: { label: 'Peaking', color: 'bg-amber-50 text-amber-700' },
-  stable: { label: 'Stable', color: 'bg-slate-100 text-slate-600' },
-  declining: { label: 'Declining', color: 'bg-red-50 text-red-700' },
 }
 
 const COMPETITION_BADGES: Record<string, { label: string; color: string }> = {
@@ -332,25 +375,11 @@ const COMPETITION_BADGES: Record<string, { label: string; color: string }> = {
   high: { label: 'High competition', color: 'bg-red-50 text-red-700' },
 }
 
-const STAGES_ORDER = ['emerging', 'rising', 'peaking', 'stable', 'declining']
-
 const TABS = [
   { key: 'brief', label: 'Brief' },
   { key: 'evidence', label: 'Evidence' },
   { key: 'market', label: 'Market' },
-  { key: 'metrics', label: 'Metrics' },
 ]
-
-function getDateRange(start: string, end: string): string[] {
-  const dates: string[] = []
-  const current = new Date(start)
-  const endDate = new Date(end)
-  while (current <= endDate) {
-    dates.push(current.toISOString().split('T')[0])
-    current.setDate(current.getDate() + 1)
-  }
-  return dates
-}
 
 function groupSignalsBySource(signals: SignalData[]): { source: string; items: SignalData[] }[] {
   const groups = new Map<string, SignalData[]>()
@@ -362,153 +391,115 @@ function groupSignalsBySource(signals: SignalData[]): { source: string; items: S
   return Array.from(groups.entries()).map(([source, items]) => ({ source, items }))
 }
 
-function MomentumChart({ trajectory }: { trajectory: TrajectoryPoint[] }) {
-  if (trajectory.length === 0) {
-    return (
-      <div className="h-48 flex items-center justify-center text-slate-400 text-sm">
-        No trajectory data yet
-      </div>
-    )
-  }
-
-  const timestamps = trajectory.map(p => p.timestamp).filter(Boolean) as string[]
-  if (timestamps.length < 2) {
-    const point = trajectory[0]
-    return (
-      <div className="h-48 flex flex-col items-center justify-center text-slate-400 text-sm gap-1">
-        <span>Single data point collected</span>
-        {point?.momentum !== null && point?.momentum !== undefined && (
-          <span className="text-slate-600 font-medium">Momentum: {point.momentum.toFixed(2)}</span>
-        )}
-        <span className="text-xs">More data points will appear after the next pipeline run.</span>
-      </div>
-    )
-  }
-
-  const startDate = timestamps[0].split('T')[0]
-  const endDate = timestamps[timestamps.length - 1].split('T')[0]
-  const allDates = getDateRange(startDate, endDate)
-
-  const dataByDate: Record<string, TrajectoryPoint> = {}
-  for (const point of trajectory) {
-    if (point.timestamp) {
-      const date = point.timestamp.split('T')[0]
-      dataByDate[date] = point
-    }
-  }
-
-  const filledData = allDates.map(date => ({
-    date,
-    point: dataByDate[date] || null,
-    hasData: !!dataByDate[date],
-  }))
-
-  const gapCount = filledData.filter(d => !d.hasData).length
-  const momentums = trajectory.map(p => p.momentum || 0)
-  const maxMomentum = Math.max(...momentums, 0.1)
-  const minMomentum = Math.min(...momentums, 0)
-  const range = maxMomentum - minMomentum || 1
-
-  const width = 100
-  const height = 48
-  const padding = 2
-
-  const segments: { points: string; isGap: boolean }[] = []
-  let currentSegment: string[] = []
-  let lastWasGap = true
-
-  filledData.forEach((d, i) => {
-    const x = padding + (i / (filledData.length - 1 || 1)) * (width - 2 * padding)
-    if (d.hasData && d.point) {
-      const y = height - padding - ((d.point.momentum || 0) - minMomentum) / range * (height - 2 * padding)
-      if (lastWasGap && currentSegment.length > 0) {
-        segments.push({ points: currentSegment.join(' '), isGap: false })
-        currentSegment = []
-      }
-      currentSegment.push(`${x},${y}`)
-      lastWasGap = false
-    } else {
-      if (!lastWasGap && currentSegment.length > 0) {
-        segments.push({ points: currentSegment.join(' '), isGap: false })
-        currentSegment = []
-      }
-      lastWasGap = true
-    }
-  })
-
-  if (currentSegment.length > 0) {
-    segments.push({ points: currentSegment.join(' '), isGap: false })
-  }
-
-  return (
-    <div className="h-48 relative">
-      {gapCount > 0 && (
-        <div className="absolute top-0 left-0 text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded">
-          {gapCount} missing day{gapCount !== 1 ? 's' : ''}
-        </div>
-      )}
-      <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full" preserveAspectRatio="none">
-        {segments.map((seg, i) => (
-          <polyline key={i} fill="none" stroke="#4F46E5" strokeWidth="0.5" points={seg.points} />
-        ))}
-        {filledData.map((d, i) => {
-          if (!d.hasData || !d.point) return null
-          const x = padding + (i / (filledData.length - 1 || 1)) * (width - 2 * padding)
-          const y = height - padding - ((d.point.momentum || 0) - minMomentum) / range * (height - 2 * padding)
-          return (
-            <circle key={i} cx={x} cy={y} r={d.point.qualified ? 1.5 : 0.8} fill={d.point.qualified ? '#4F46E5' : '#94A3B8'} />
-          )
-        })}
-      </svg>
-      <div className="absolute top-0 right-0 text-xs text-slate-400">{maxMomentum.toFixed(2)}</div>
-      <div className="absolute bottom-0 right-0 text-xs text-slate-400">{minMomentum.toFixed(2)}</div>
-    </div>
-  )
-}
-
-function StageTimeline({ trajectory }: { trajectory: TrajectoryPoint[] }) {
-  const stageColors: Record<string, string> = {
-    emerging: 'bg-blue-50 text-blue-700',
-    rising: 'bg-emerald-50 text-emerald-700',
-    peaking: 'bg-amber-50 text-amber-700',
-    stable: 'bg-slate-100 text-slate-600',
-    declining: 'bg-red-50 text-red-700',
-  }
-
-  const stages: { stage: string; count: number }[] = []
-  let cs = ''
-  for (const point of trajectory) {
-    if (point.stage && point.stage !== cs) {
-      stages.push({ stage: point.stage, count: 1 })
-      cs = point.stage
-    } else if (stages.length > 0) {
-      stages[stages.length - 1].count++
-    }
-  }
-
-  if (stages.length === 0) {
-    return <div className="text-slate-400 text-sm">No stage data</div>
-  }
-
-  const total = trajectory.length
-
-  return (
-    <div className="flex h-6 rounded overflow-hidden">
-      {stages.map((s, i) => (
-        <div
-          key={i}
-          className={`${stageColors[s.stage] || 'bg-slate-100 text-slate-600'} flex items-center justify-center text-xs font-medium`}
-          style={{ width: `${(s.count / total) * 100}%` }}
-          title={`${s.stage}: ${s.count} snapshots`}
-        >
-          {s.count >= 2 && s.stage}
-        </div>
-      ))}
-    </div>
-  )
-}
-
 function BriefTab({ trend }: { trend: TrendData }) {
+  const pb = trend.preBrief
+
+  // ── Phase 3 fast path ──────────────────────────────────────────────
+  if (pb) {
+    const painPoints = pb.persona_pain_points || []
+    const hypotheses = pb.hypotheses || []
+    const validationExps = pb.validation_experiments || []
+    const riskFactors = pb.risk_factors || []
+
+    return (
+      <div className="space-y-8">
+        <div>
+          <h2 className="text-base font-semibold text-slate-900 mb-2">What&apos;s happening</h2>
+          <p className="text-sm text-slate-600 leading-relaxed">
+            {pb.synthesis || 'Not enough data yet. Check back after more pipeline runs.'}
+          </p>
+          {pb.synthesis_citations && pb.synthesis_citations.length > 0 && (
+            <p className="text-xs text-slate-400 mt-2">
+              Sources:{' '}
+              {pb.synthesis_citations.map((c, i) => (
+                <span key={i}>
+                  {i > 0 && ' · '}
+                  {c.url ? (
+                    <a href={c.url} target="_blank" rel="noopener noreferrer" className="hover:text-indigo-600 transition">
+                      {c.title} ({c.source})
+                    </a>
+                  ) : (
+                    `${c.title} (${c.source})`
+                  )}
+                </span>
+              ))}
+            </p>
+          )}
+        </div>
+
+        {(pb.persona_roles?.length || painPoints.length > 0) && (
+          <div>
+            <h2 className="text-base font-semibold text-slate-900 mb-2">Who wants this</h2>
+            {pb.persona_roles && pb.persona_roles.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-3">
+                {pb.persona_roles.map((role, i) => (
+                  <span key={i} className="text-xs bg-slate-100 text-slate-700 px-2.5 py-1 rounded-full font-medium">{role}</span>
+                ))}
+              </div>
+            )}
+            {painPoints.length > 0 && (
+              <div className="space-y-3">
+                {painPoints.map((p, i) => (
+                  <SignalQuote key={i} phrase={p.phrase} quote={p.quote} source={p.source} />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {hypotheses.length > 0 && (
+          <div>
+            <h2 className="text-base font-semibold text-slate-900 mb-2">What to build</h2>
+            <div className="space-y-2">
+              {hypotheses.map((h, i) => (
+                <div key={i} className="border border-slate-200 rounded-lg p-3">
+                  <p className="text-sm font-medium text-slate-900">{h.idea}</p>
+                  <div className="flex items-center gap-3 mt-1">
+                    {h.effort && <span className="text-[11px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{h.effort}</span>}
+                    {h.audience && <span className="text-[11px] text-slate-500">{h.audience}</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {validationExps.length > 0 && (
+          <div>
+            <h2 className="text-base font-semibold text-slate-900 mb-2">How to validate</h2>
+            <div className="space-y-2">
+              {validationExps.map((v, i) => (
+                <div key={i} className="border border-slate-200 rounded-lg p-3">
+                  <p className="text-sm font-medium text-slate-900">{v.title}</p>
+                  {v.description && <p className="text-sm text-slate-600 mt-0.5">{v.description}</p>}
+                  {v.success_criteria && <p className="text-xs text-slate-400 mt-1">{v.success_criteria}</p>}
+                  {v.effort && <span className="inline-block mt-1 text-[11px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{v.effort}</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div>
+          <h2 className="text-base font-semibold text-slate-900 mb-2">Risks &amp; unknowns</h2>
+          {pb.risk_narrative && (
+            <p className="text-sm text-slate-600 leading-relaxed mb-3">{pb.risk_narrative}</p>
+          )}
+          {riskFactors.length > 0 ? (
+            <div className="space-y-2">
+              {riskFactors.map((r, i) => (
+                <RiskIndicator key={i} label={r.label} severity={r.severity} />
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-slate-400">No significant risks identified yet.</p>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  // ── Fallback: assembled brief ──────────────────────────────────────
   const timingLabels: Record<string, string> = {
     early_edge: 'The market window is open — early movers have an advantage right now.',
     too_early: 'Still very early — limited data, but worth watching.',
@@ -759,6 +750,7 @@ function EvidenceTab({ trend }: { trend: TrendData }) {
 }
 
 function MarketTab({ trend }: { trend: TrendData }) {
+  const pb = trend.preBrief
   const compBadge = trend.competition ? COMPETITION_BADGES[trend.competition.competition_level] : null
   const existingSolutions = trend.intelligence?.existing_solutions || []
 
@@ -766,35 +758,46 @@ function MarketTab({ trend }: { trend: TrendData }) {
     <div className="space-y-8">
       <div>
         <h2 className="text-base font-semibold text-slate-900 mb-3">Competition</h2>
-        {compBadge ? (
-          <div className="flex items-center gap-3">
-            <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${compBadge.color}`}>
-              {compBadge.label}
-            </span>
-            {trend.competition && trend.competition.saturation_score > 0 && (
-              <span className="text-xs text-slate-500">Saturation: {Math.round(trend.competition.saturation_score * 100)}%</span>
+        {pb?.competition_narrative ? (
+          <div className="space-y-3">
+            <p className="text-sm text-slate-700 leading-relaxed">{pb.competition_narrative}</p>
+            {pb.competition_repos && pb.competition_repos.length > 0 && (
+              <p className="text-xs text-slate-500">
+                Open source: {pb.competition_repos.map(r => r.name).join(', ')}
+              </p>
+            )}
+            {pb.competition_tools && pb.competition_tools.length > 0 && (
+              <p className="text-xs text-slate-500">
+                Related tools: {pb.competition_tools.map(t => t.name).join(', ')}
+              </p>
             )}
           </div>
+        ) : compBadge ? (
+          <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${compBadge.color}`}>
+            {compBadge.label}
+          </span>
         ) : (
           <p className="text-sm text-slate-400">Competition data not available yet.</p>
         )}
       </div>
 
-      <div>
-        <h2 className="text-base font-semibold text-slate-900 mb-3">Who&apos;s already building</h2>
-        {existingSolutions.length > 0 ? (
-          <div className="space-y-2">
-            {existingSolutions.map((sol, i) => (
-              <div key={i} className="border border-slate-200 rounded-lg p-3">
-                <p className="text-sm font-medium text-slate-900">{sol.name}</p>
-                {sol.gap && <p className="text-xs text-slate-500 mt-0.5">{sol.gap}</p>}
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-sm text-slate-400">Not enough data to identify competitors yet.</p>
-        )}
-      </div>
+      {!pb && (
+        <div>
+          <h2 className="text-base font-semibold text-slate-900 mb-3">Who&apos;s already building</h2>
+          {existingSolutions.length > 0 ? (
+            <div className="space-y-2">
+              {existingSolutions.map((sol, i) => (
+                <div key={i} className="border border-slate-200 rounded-lg p-3">
+                  <p className="text-sm font-medium text-slate-900">{sol.name}</p>
+                  {sol.gap && <p className="text-xs text-slate-500 mt-0.5">{sol.gap}</p>}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-slate-400">Not enough data to identify competitors yet.</p>
+          )}
+        </div>
+      )}
 
       <div>
         <h2 className="text-base font-semibold text-slate-900 mb-3">Differentiation opportunities</h2>
@@ -804,9 +807,6 @@ function MarketTab({ trend }: { trend: TrendData }) {
               <div key={i} className="border border-slate-200 rounded-lg p-3">
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-xs font-medium text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">{w.wedge_type}</span>
-                  {w.confidence > 0 && (
-                    <span className="text-xs text-slate-400">{Math.round(w.confidence * 100)}% confidence</span>
-                  )}
                 </div>
                 <p className="text-sm text-slate-600">{w.trigger_reason}</p>
               </div>
@@ -820,141 +820,6 @@ function MarketTab({ trend }: { trend: TrendData }) {
   )
 }
 
-function MetricsTab({ trend }: { trend: TrendData }) {
-  const latestPoint = trend.trajectory[trend.trajectory.length - 1]
-
-  return (
-    <div className="space-y-8">
-      {latestPoint ? (
-        <>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="border border-slate-200 rounded-lg p-3">
-              <div className="text-xs text-slate-500 mb-1">Current Momentum</div>
-              <div className="text-xl font-bold text-slate-900">
-                {latestPoint.momentum?.toFixed(2) || '\u2014'}
-              </div>
-            </div>
-            <div className="border border-slate-200 rounded-lg p-3">
-              <div className="text-xs text-slate-500 mb-1">Peak Momentum</div>
-              <div className="text-xl font-bold text-slate-900">
-                {trend.peak_momentum?.toFixed(2) || '\u2014'}
-              </div>
-            </div>
-            <div className="border border-slate-200 rounded-lg p-3">
-              <div className="text-xs text-slate-500 mb-1">Times Qualified</div>
-              <div className="text-xl font-bold text-slate-900">{trend.qualified_count}</div>
-            </div>
-            <div className="border border-slate-200 rounded-lg p-3">
-              <div className="text-xs text-slate-500 mb-1">Current Signals</div>
-              <div className="text-xl font-bold text-slate-900">
-                {latestPoint.signal_count || '\u2014'}
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <h3 className="text-sm font-semibold text-slate-700 mb-3">Momentum Over Time</h3>
-            <div className="border border-slate-200 rounded-lg p-4">
-              <MomentumChart trajectory={trend.trajectory} />
-              {trend.trajectory.length >= 2 && (
-                <div className="flex justify-between text-xs text-slate-400 mt-2">
-                  <span>
-                    {trend.trajectory[0]?.timestamp
-                      ? new Date(trend.trajectory[0].timestamp).toLocaleDateString()
-                      : '\u2014'}
-                  </span>
-                  <span>
-                    {latestPoint?.timestamp
-                      ? new Date(latestPoint.timestamp).toLocaleDateString()
-                      : '\u2014'}
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div>
-            <h3 className="text-sm font-semibold text-slate-700 mb-3">Lifecycle Stages</h3>
-            <div className="border border-slate-200 rounded-lg p-4">
-              <StageTimeline trajectory={trend.trajectory} />
-              <div className="flex gap-4 mt-3 text-xs">
-                {STAGES_ORDER.map(stage => (
-                  <span key={stage} className="flex items-center gap-1">
-                    <span className={`w-3 h-3 rounded ${STAGE_PILLS[stage]?.color.split(' ')[0] || 'bg-slate-100'}`}></span>
-                    <span className="text-slate-500">{STAGE_PILLS[stage]?.label || stage}</span>
-                  </span>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <h3 className="text-sm font-semibold text-slate-700 mb-3">Snapshot History</h3>
-            <div className="border border-slate-200 rounded-lg overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50">
-                  <tr>
-                    <th className="px-4 py-2.5 text-left text-slate-500 font-medium text-xs">Date</th>
-                    <th className="px-4 py-2.5 text-left text-slate-500 font-medium text-xs">Momentum</th>
-                    <th className="px-4 py-2.5 text-left text-slate-500 font-medium text-xs">Signals</th>
-                    <th className="px-4 py-2.5 text-left text-slate-500 font-medium text-xs">Stage</th>
-                    <th className="px-4 py-2.5 text-left text-slate-500 font-medium text-xs">Qualified</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {[...trend.trajectory].reverse().slice(0, 10).map((point, i) => (
-                    <tr key={i} className="border-t border-slate-200">
-                      <td className="px-4 py-2.5 text-slate-900 text-xs">
-                        {point.timestamp ? new Date(point.timestamp).toLocaleDateString() : '\u2014'}
-                      </td>
-                      <td className="px-4 py-2.5 text-slate-900 text-xs tabular-nums">
-                        {point.momentum?.toFixed(3) || '\u2014'}
-                      </td>
-                      <td className="px-4 py-2.5 text-slate-900 text-xs">
-                        {point.signal_count || '\u2014'}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        {point.stage && (
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${
-                            STAGE_PILLS[point.stage]?.color || 'bg-slate-100 text-slate-600'
-                          }`}>
-                            {point.stage}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        {point.qualified ? (
-                          <span className="text-indigo-600 text-xs">Yes</span>
-                        ) : (
-                          <span className="text-slate-400 text-xs">{'\u2014'}</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </>
-      ) : (
-        <div className="border border-slate-200 rounded-lg p-8 text-center">
-          <p className="text-sm text-slate-500">No snapshot data available yet.</p>
-          <p className="text-xs text-slate-400 mt-1">Analytics will appear after the pipeline processes this trend.</p>
-        </div>
-      )}
-
-      <MetricExplainer metrics={[
-        'momentum',
-        ...(trend.peak_momentum ? ['peak_momentum'] : []),
-        'signal_count',
-        'stage',
-        'qualified',
-        ...(trend.timing ? ['timing'] : []),
-        ...(trend.competition ? ['competition'] : []),
-      ]} />
-    </div>
-  )
-}
 
 export default async function TrendDetailPage({
   params,
@@ -973,8 +838,6 @@ export default async function TrendDetailPage({
     notFound()
   }
 
-  const stageConfig = trend.current_stage ? STAGE_PILLS[trend.current_stage] : null
-
   return (
     <div className="min-h-screen bg-white">
       <div className="max-w-3xl mx-auto px-6 py-10">
@@ -989,23 +852,13 @@ export default async function TrendDetailPage({
         </h1>
 
         <div className="flex items-center gap-2 flex-wrap mb-2">
-          {stageConfig && (
-            <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${stageConfig.color}`}>
-              {stageConfig.label}
-            </span>
-          )}
-          {trend.hypothesis && trend.hypothesis.confidence > 0 && (
-            <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-600">
-              {Math.round(trend.hypothesis.confidence * 100)}% confidence
-            </span>
-          )}
           {trend.opportunity?.qualified ? (
             <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700">
-              Qualified
+              Ready to build
             </span>
           ) : (
             <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-500">
-              Not qualified
+              Forming
             </span>
           )}
         </div>
@@ -1037,18 +890,14 @@ export default async function TrendDetailPage({
         {activeTab === 'brief' && <BriefTab trend={trend} />}
         {activeTab === 'evidence' && <EvidenceTab trend={trend} />}
         {activeTab === 'market' && <MarketTab trend={trend} />}
-        {activeTab === 'metrics' && <MetricsTab trend={trend} />}
 
         <div className="text-xs text-slate-400 mt-10">
           <details>
             <summary className="cursor-pointer hover:text-slate-500">System info</summary>
             <div className="mt-2 space-y-1">
-              <p>Scoring: norm-p90-decay7d-v1</p>
-              <p>Lifecycle: lifecycle-v1</p>
-              {trend.timing && <p>Timing: timing-v1</p>}
-              {trend.competition && <p>Competition: competition-v1</p>}
-              <p>{trend.total_snapshots} snapshots tracked</p>
               <p>First seen: {new Date(trend.first_seen).toLocaleDateString()}</p>
+              <p>{trend.total_snapshots} snapshots tracked</p>
+              {trend.preBrief && <p>Brief: pre-generated</p>}
             </div>
           </details>
         </div>

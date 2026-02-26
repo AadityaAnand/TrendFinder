@@ -191,9 +191,9 @@ function ForYouContent() {
                         {title}
                       </Link>
                       <div className="flex items-center gap-1.5 shrink-0">
-                        {opp.qualified && opp.personalized_score > 0 && (
-                          <span className="text-xs font-medium text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">
-                            {Math.round(opp.personalized_score * 100)}%
+                        {opp.qualified && (
+                          <span className="text-xs font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
+                            Ready to build
                           </span>
                         )}
                         {!opp.qualified && (
@@ -280,11 +280,11 @@ function ForYouContent() {
                           </p>
                         )}
 
-                        <div className="flex items-center gap-3 text-xs text-slate-500">
-                          {opp.timing && <span>Timing: {opp.timing.label.replace(/_/g, ' ')}</span>}
-                          {opp.competition && <span>Competition: {opp.competition.level}</span>}
-                          {h?.confidence !== undefined && <span>Confidence: {Math.round((h.confidence ?? 0) * 100)}%</span>}
-                        </div>
+                        {opp.competition && (
+                          <div className="text-xs text-slate-500">
+                            Competition: {opp.competition.level}
+                          </div>
+                        )}
 
                         {(opp.fit_reasons || []).length > 0 && (
                           <div>

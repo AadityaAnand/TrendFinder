@@ -8,14 +8,6 @@ const STATUS_FILTERS = [
   { key: 'topic_only', label: 'Topic only' },
 ]
 
-const STAGE_FILTERS = [
-  { key: 'all', label: 'Any stage' },
-  { key: 'emerging', label: 'Emerging' },
-  { key: 'rising', label: 'Rising' },
-  { key: 'peaking', label: 'Peaking' },
-  { key: 'stable', label: 'Stable' },
-  { key: 'declining', label: 'Declining' },
-]
 
 interface HypothesisItem {
   trend_id: string
@@ -111,11 +103,10 @@ async function getHypotheses(): Promise<{ items: HypothesisItem[]; snapshotTime:
 export default async function ExplorePage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; stage?: string; q?: string }>
+  searchParams: Promise<{ status?: string; q?: string }>
 }) {
   const params = await searchParams
   const selectedStatus = params.status || 'all'
-  const selectedStage = params.stage || 'all'
   const query = params.q?.trim().toLowerCase() || ''
   const { items: allItems, snapshotTime } = await getHypotheses()
 
@@ -123,21 +114,15 @@ export default async function ExplorePage({
     ? allItems
     : allItems.filter(i => i.hypothesis_status === selectedStatus)
 
-  if (selectedStage !== 'all') {
-    filtered = filtered.filter(i => i.stage === selectedStage && i.comparable && i.stage_confidence >= 0.5)
-  }
-
   if (query) {
     filtered = filtered.filter(i => i.display_title.toLowerCase().includes(query))
   }
 
-  function buildUrl(p: { status?: string; stage?: string; q?: string }) {
+  function buildUrl(p: { status?: string; q?: string }) {
     const parts: string[] = []
     const s = p.status ?? selectedStatus
-    const st = p.stage ?? selectedStage
     const qr = p.q ?? query
     if (s && s !== 'all') parts.push(`status=${s}`)
-    if (st && st !== 'all') parts.push(`stage=${st}`)
     if (qr) parts.push(`q=${encodeURIComponent(qr)}`)
     return parts.length > 0 ? `/explore?${parts.join('&')}` : '/explore'
   }
@@ -170,7 +155,6 @@ export default async function ExplorePage({
             className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 transition focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
           />
           {selectedStatus !== 'all' && <input type="hidden" name="status" value={selectedStatus} />}
-          {selectedStage !== 'all' && <input type="hidden" name="stage" value={selectedStage} />}
         </form>
 
         <div className="flex items-center gap-1.5 mb-3 overflow-x-auto pb-1">
@@ -197,35 +181,12 @@ export default async function ExplorePage({
           })}
         </div>
 
-        <div className="flex items-center gap-1.5 mb-4 overflow-x-auto pb-1">
-          {STAGE_FILTERS.map(sf => {
-            const isActive = sf.key === selectedStage
-            return (
-              <Link
-                key={sf.key}
-                href={buildUrl({ stage: sf.key })}
-                className={`shrink-0 px-2.5 py-1 rounded-md text-[11px] font-medium transition border ${
-                  isActive
-                    ? 'bg-indigo-600 text-white border-indigo-600'
-                    : 'bg-white text-slate-500 border border-slate-200 hover:border-slate-300'
-                }`}
-              >
-                {sf.label}
-              </Link>
-            )
-          })}
-        </div>
-
-        <div className="flex items-center gap-2 mb-6 text-xs text-slate-400">
-          <span>Sorted by momentum</span>
-          {(query || selectedStage !== 'all' || selectedStatus !== 'all') && (
-            <>
-              <span>&middot;</span>
-              <span>{filtered.length} result{filtered.length !== 1 ? 's' : ''}</span>
-              <Link href="/explore" className="text-indigo-600 hover:text-indigo-700 underline ml-1">Clear</Link>
-            </>
-          )}
-        </div>
+        {(query || selectedStatus !== 'all') && (
+          <div className="flex items-center gap-2 mb-6 text-xs text-slate-400">
+            <span>{filtered.length} result{filtered.length !== 1 ? 's' : ''}</span>
+            <Link href="/explore" className="text-indigo-600 hover:text-indigo-700 underline ml-1">Clear</Link>
+          </div>
+        )}
 
         {filtered.length === 0 ? (
           <div className="border border-slate-200 rounded-xl p-10 text-center">
@@ -274,7 +235,7 @@ export default async function ExplorePage({
                         {statusLabel[item.hypothesis_status] || 'Unknown'}
                       </span>
                       {item.qualified && (
-                        <span className="text-[10px] font-medium text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">Qualified</span>
+                        <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">Ready to build</span>
                       )}
                     </div>
                   </div>
@@ -286,8 +247,6 @@ export default async function ExplorePage({
                   <div className="flex items-center gap-3 text-xs text-slate-400">
                     <span>{item.signal_count} signal{item.signal_count !== 1 ? 's' : ''}</span>
                     {item.source_count > 0 && <span>{item.source_count} source{item.source_count !== 1 ? 's' : ''}</span>}
-                    {item.momentum_score > 0 && <span>{(item.momentum_score * 100).toFixed(0)}% momentum</span>}
-                    {item.confidence > 0 && <span>{Math.round(item.confidence * 100)}% confidence</span>}
                   </div>
                 </Link>
               )

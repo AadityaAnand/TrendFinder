@@ -35,7 +35,7 @@ export function Nav() {
     <nav className="bg-white/95 backdrop-blur-sm border-b border-slate-200 sticky top-0 z-50">
       <div className="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
         <Link href={isLoggedIn ? '/for-you' : '/'} className="flex items-center gap-2">
-          <span className="text-base font-bold tracking-tight rishi-gradient-text">Rishi</span>
+          <span className="text-base font-bold tracking-tight text-slate-900">Rishi</span>
         </Link>
 
         {isLoggedIn ? (

@@ -68,27 +68,18 @@ export default async function OverviewPage() {
       <div className="max-w-3xl mx-auto px-6 py-12">
         <div className="mb-10">
           <h1 className="text-3xl font-bold text-slate-900 tracking-tight">
-            Welcome to <span className="rishi-gradient-text">Rishi</span>
+            Welcome to Rishi
           </h1>
           <p className="text-base text-slate-500 mt-2 max-w-2xl leading-relaxed">
             Your evidence-based foresight engine. Rishi watches developer signals across
             Hacker News, GitHub, Dev.to, and Reddit &mdash; then surfaces what&apos;s actionable.
           </p>
-        </div>
-
-        <div className="grid grid-cols-3 gap-4 mb-8">
-          <div className="bg-white border border-slate-200 rounded-xl p-4">
-            <div className="text-2xl font-bold text-slate-900">{trendCount}</div>
-            <div className="text-xs text-slate-500 mt-0.5">Trends tracked</div>
-          </div>
-          <div className="bg-white border border-slate-200 rounded-xl p-4">
-            <div className="text-2xl font-bold text-indigo-600">{qualifiedCount}</div>
-            <div className="text-xs text-slate-500 mt-0.5">Qualified opportunities</div>
-          </div>
-          <div className="bg-white border border-slate-200 rounded-xl p-4">
-            <div className="text-2xl font-bold text-slate-900">{watchingCount}</div>
-            <div className="text-xs text-slate-500 mt-0.5">Watching</div>
-          </div>
+          {snapshot && (
+            <p className="text-sm text-slate-600 mt-3">
+              <span className="font-medium text-indigo-600">{qualifiedCount} {qualifiedCount === 1 ? 'opportunity' : 'opportunities'}</span> ready to brief.
+              {watchingCount > 0 && <> Watching {watchingCount} more.</>}
+            </p>
+          )}
         </div>
 
         {freshness && (
@@ -172,14 +163,13 @@ export default async function OverviewPage() {
                       {trend.name}
                     </span>
                     {trend.qualified && (
-                      <span className="shrink-0 text-[10px] font-medium text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-200">
-                        Qualified
+                      <span className="shrink-0 text-[10px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                        Ready to build
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-4 shrink-0 text-xs text-slate-400">
+                  <div className="shrink-0 text-xs text-slate-400">
                     <span>{trend.signals} signals</span>
-                    <span className="tabular-nums">{(trend.momentum * 100).toFixed(0)}% momentum</span>
                   </div>
                 </Link>
               ))}
