@@ -17,7 +17,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 DETECTOR_VERSION = 'embedding-cluster-v1'
-SCORING_VERSION = 'norm-p90-decay7d-div-demand-v2'
+SCORING_VERSION = 'norm-p90-decay7d-div-demand-v3'
 LIFECYCLE_VERSION = 'lifecycle-v1'
 EMBEDDING_MODEL = 'all-MiniLM-L6-v2'
 
@@ -35,7 +35,11 @@ DISTANCE_TO_CENTROID_THRESHOLD = 0.3
 BOOTSTRAP_P90 = {
     'hackernews': 426,
     'github': 1690,
-    'devto': 92
+    'devto': 92,
+    'reddit': 150,        # upvotes; r/startups hot posts ~100-500 range
+    'producthunt': 300,   # votes; typical featured product ~200-800
+    'indiehackers': 50,   # upvotes; IH trending posts ~20-100
+    'substack': 1,        # no engagement score; every article scores near 0
 }
 DECAY_HALF_LIFE_DAYS = 7
 
@@ -395,9 +399,11 @@ def calculate_cluster_momentum(
     top_k = min(3, len(sorted_scores))
     top3_mean = np.mean(sorted_scores[:top_k]) if sorted_scores else 0
 
-    # Source diversity: 1 source = 0, 2 = 0.5, 3+ = 1.0
+    # Source diversity: scales linearly from 0 (1 source) to 1.0 (all MAX_SOURCES).
+    # With 7 configured sources, each additional source adds ~0.17.
+    MAX_SOURCES = 7
     unique_sources = set(s.get('source', '') for s in signals)
-    source_diversity_factor = min(1.0, (len(unique_sources) - 1) * 0.5)
+    source_diversity_factor = min(1.0, (len(unique_sources) - 1) / (MAX_SOURCES - 1)) if MAX_SOURCES > 1 else 0.0
 
     # Demand density from Layer 1 regex
     demand_count = 0

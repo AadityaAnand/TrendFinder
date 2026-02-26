@@ -15,7 +15,7 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 DETECTOR_VERSION = 'phrase-topic-v2'
-SCORING_VERSION = 'norm-p90-decay7d-div-demand-v2'
+SCORING_VERSION = 'norm-p90-decay7d-div-demand-v3'
 LIFECYCLE_VERSION = 'lifecycle-v1'
 
 # Non-trend filter: reject trends that are just generic phrases or single headlines
@@ -165,6 +165,14 @@ def get_engagement_score(signal):
         return score + comments
     elif source == 'github':
         return score
+    elif source == 'reddit':
+        return score * 1.0 + comments * 0.5
+    elif source == 'producthunt':
+        return score * 1.0 + comments * 0.3
+    elif source == 'indiehackers':
+        return score * 1.0 + comments * 0.5
+    elif source == 'substack':
+        return 1.0  # no engagement metrics; treat each article as a minimal-but-valid signal
     else:
         return score + comments
 
@@ -208,7 +216,11 @@ def get_baseline_percentiles(source, fallback_p90=100):
     BOOTSTRAP_BASELINES = {
         'hackernews': {'p90': 426, 'sample_size': 119, 'bootstrap_source': 'analyze_sources.py 2026-01-13 snapshot_1'},
         'github': {'p90': 1690, 'sample_size': 60, 'bootstrap_source': 'analyze_sources.py 2026-01-13 snapshot_1'},
-        'devto': {'p90': 92, 'sample_size': 60, 'bootstrap_source': 'analyze_sources.py 2026-01-13 snapshot_1'}
+        'devto': {'p90': 92, 'sample_size': 60, 'bootstrap_source': 'analyze_sources.py 2026-01-13 snapshot_1'},
+        'reddit': {'p90': 150, 'sample_size': 0, 'bootstrap_source': 'phase5-bootstrap'},
+        'producthunt': {'p90': 300, 'sample_size': 0, 'bootstrap_source': 'phase5-bootstrap'},
+        'indiehackers': {'p90': 50, 'sample_size': 0, 'bootstrap_source': 'phase5-bootstrap'},
+        'substack': {'p90': 1, 'sample_size': 0, 'bootstrap_source': 'phase5-bootstrap'},
     }
     baseline = BOOTSTRAP_BASELINES.get(source, {'p90': fallback_p90, 'sample_size': 0, 'bootstrap_source': 'unknown'})
     return {'p90': baseline['p90'], 'sample_size': baseline['sample_size'], 'method': 'bootstrap'}
@@ -422,9 +434,11 @@ def group_signals_into_trends(signals, duplicate_ids, snapshot_id=None):
         topk_scores = sorted(weighted_scores, reverse=True)[:k]
         topk_mean = sum(topk_scores) / k if k > 0 else 0
 
-        # Source diversity: 1 source = 0, 2 = 0.5, 3+ = 1.0
+        # Source diversity: scales linearly from 0 (1 source) to 1.0 (all MAX_SOURCES).
+        # With 7 configured sources, each additional source adds ~0.17.
+        MAX_SOURCES = 7
         trend_sources = set(s.get('source', '') for s in trend_signals)
-        source_diversity_factor = min(1.0, (len(trend_sources) - 1) * 0.5)
+        source_diversity_factor = min(1.0, (len(trend_sources) - 1) / (MAX_SOURCES - 1)) if MAX_SOURCES > 1 else 0.0
 
         # Demand density from Layer 1 regex
         demand_count = 0

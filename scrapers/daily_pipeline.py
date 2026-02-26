@@ -181,7 +181,7 @@ def get_evidence_integrity_stats(snapshot_id: str) -> dict:
     signals_data = signals_resp.data or []
 
     trends_with_canonical = set()
-    canonical_sources = {'github', 'hackernews', 'devto'}
+    canonical_sources = {'github', 'hackernews', 'devto', 'producthunt', 'indiehackers', 'substack'}
     for sig in signals_data:
         source = sig.get('raw_signals', {}).get('source', '')
         if source in canonical_sources:
@@ -352,7 +352,10 @@ def run_pipeline(skip_scrapers: bool = False, force: bool = False) -> dict:
 
     try:
         if not skip_scrapers:
-            scrapers = ['hackernews_scraper', 'github_scraper', 'devto_scraper']
+            scrapers = [
+                'hackernews_scraper', 'github_scraper', 'devto_scraper',
+                'reddit_scraper', 'producthunt_scraper', 'indiehackers_scraper', 'substack_scraper',
+            ]
             for scraper in scrapers:
                 if run_scraper(scraper):
                     stages_completed.append(f'scrape_{scraper}')

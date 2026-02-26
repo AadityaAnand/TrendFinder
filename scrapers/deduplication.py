@@ -60,6 +60,31 @@ def extract_canonical_url(signal):
             username, slug = match.groups()
             return f"dev.to/{username.lower()}/{slug.lower()}", 'article'
 
+    if 'producthunt.com' in domain:
+        match = re.match(r'^/posts/([^/?]+)', path)
+        if match:
+            slug = match.group(1)
+            return f"producthunt.com/posts/{slug.lower()}", 'product'
+
+    if 'indiehackers.com' in domain:
+        match = re.match(r'^/post/([^/?]+)', path)
+        if match:
+            slug = match.group(1)
+            return f"indiehackers.com/post/{slug.lower()}", 'article'
+
+    if domain.endswith('.substack.com'):
+        match = re.match(r'^/p/([^/?]+)', path)
+        if match:
+            slug = match.group(1)
+            return f"{domain}/p/{slug.lower()}", 'article'
+
+    if 'reddit.com' in domain:
+        # Normalise reddit.com/r/{sub}/comments/{id}/{slug}/ → reddit.com/r/{sub}/comments/{id}
+        match = re.match(r'^/r/([^/]+)/comments/([^/]+)', path)
+        if match:
+            sub, post_id = match.groups()
+            return f"reddit.com/r/{sub.lower()}/comments/{post_id}", 'discussion'
+
     if domain in WRAPPER_DOMAINS:
         return None, 'wrapper'
 

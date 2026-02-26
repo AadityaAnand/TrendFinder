@@ -47,6 +47,24 @@ def extract_canonical_url_for_artifact(url: str, source: str) -> Optional[str]:
                 username, slug = match.groups()
                 return f"dev.to/{username.lower()}/{slug.lower()}"
 
+        if 'producthunt.com' in domain:
+            match = re.match(r'^/posts/([^/]+)', path)
+            if match:
+                slug = match.group(1)
+                return f"producthunt.com/posts/{slug.lower()}"
+
+        if 'indiehackers.com' in domain:
+            match = re.match(r'^/post/([^/?]+)', path)
+            if match:
+                slug = match.group(1)
+                return f"indiehackers.com/post/{slug.lower()}"
+
+        if domain.endswith('.substack.com'):
+            match = re.match(r'^/p/([^/?]+)', path)
+            if match:
+                slug = match.group(1)
+                return f"{domain}/p/{slug.lower()}"
+
         if domain in WRAPPER_DOMAINS:
             return None
 
