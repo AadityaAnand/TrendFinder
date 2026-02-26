@@ -1,5 +1,6 @@
 import { getServerSupabase, getLatestSnapshot, getHypothesisDisplayTitle } from '@/lib/supabase-server'
 import Link from 'next/link'
+import { LiveSignalCounter } from '@/app/components/LiveSignalCounter'
 
 const STATUS_FILTERS = [
   { key: 'all', label: 'All' },
@@ -24,11 +25,18 @@ interface HypothesisItem {
   source_count: number
 }
 
-async function getHypotheses(): Promise<{ items: HypothesisItem[]; snapshotTime: string | null }> {
+async function getHypotheses(): Promise<{ items: HypothesisItem[]; snapshotTime: string | null; todaySignals: number }> {
   const db = getServerSupabase()
   const snapshot = await getLatestSnapshot(db)
 
-  if (!snapshot) return { items: [], snapshotTime: null }
+  const todayStart = new Date()
+  todayStart.setUTCHours(0, 0, 0, 0)
+  const { count: todaySignals } = await db
+    .from('raw_signals')
+    .select('id', { count: 'exact', head: true })
+    .gte('created_at', todayStart.toISOString())
+
+  if (!snapshot) return { items: [], snapshotTime: null, todaySignals: todaySignals ?? 0 }
 
   const { data: snapshotItems } = await db
     .from('trend_snapshot_items')
@@ -36,7 +44,7 @@ async function getHypotheses(): Promise<{ items: HypothesisItem[]; snapshotTime:
     .eq('snapshot_id', snapshot.id)
 
   if (!snapshotItems || snapshotItems.length === 0) {
-    return { items: [], snapshotTime: snapshot.run_at }
+    return { items: [], snapshotTime: snapshot.run_at, todaySignals: todaySignals ?? 0 }
   }
 
   const trendIds = snapshotItems.map(s => s.trend_id)
@@ -97,7 +105,7 @@ async function getHypotheses(): Promise<{ items: HypothesisItem[]; snapshotTime:
 
   items.sort((a, b) => b.momentum_score - a.momentum_score)
 
-  return { items, snapshotTime: snapshot.run_at }
+  return { items, snapshotTime: snapshot.run_at, todaySignals: todaySignals ?? 0 }
 }
 
 export default async function ExplorePage({
@@ -108,7 +116,7 @@ export default async function ExplorePage({
   const params = await searchParams
   const selectedStatus = params.status || 'all'
   const query = params.q?.trim().toLowerCase() || ''
-  const { items: allItems, snapshotTime } = await getHypotheses()
+  const { items: allItems, snapshotTime, todaySignals } = await getHypotheses()
 
   let filtered = selectedStatus === 'all'
     ? allItems
@@ -144,6 +152,9 @@ export default async function ExplorePage({
               Last updated {new Date(snapshotTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
             </p>
           )}
+          <div className="mt-1">
+            <LiveSignalCounter initial={todaySignals} />
+          </div>
         </header>
 
         <form action="/explore" method="GET" className="mb-5">

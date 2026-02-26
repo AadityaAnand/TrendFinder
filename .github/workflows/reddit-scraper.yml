@@ -1,0 +1,33 @@
+name: Scrape Reddit
+
+on:
+  schedule:
+    - cron: '30 */4 * * *'  # Every 4 hours, offset by 30 min
+  workflow_dispatch:
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: scrapers/requirements-scrapers.txt
+
+      - name: Install dependencies
+        run: pip install -r scrapers/requirements-scrapers.txt
+
+      - name: Run scraper
+        working-directory: scrapers
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
+          REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
+          REDDIT_USER_AGENT: ${{ secrets.REDDIT_USER_AGENT }}
+        run: python reddit_scraper.py
