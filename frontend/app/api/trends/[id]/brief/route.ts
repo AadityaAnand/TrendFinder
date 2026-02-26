@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSupabase, getLatestSnapshot, getHypothesisDisplayTitle, getTrendDisplayName } from '@/lib/supabase-server'
+import { getServerSupabase, getLatestSnapshot, getHypothesisDisplayTitle } from '@/lib/supabase-server'
 
 // ============================================================
 // Helper: parse JSON strings or passthrough arrays/objects
@@ -138,7 +138,7 @@ function formatPreGeneratedBrief(
 // Route Handler
 // ============================================================
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params
@@ -203,7 +203,7 @@ export async function GET(
 
   const seen = new Set<string>()
   const signals: { title: string; source: string; url: string | null; score: number; created_at: string }[] = []
-  for (const row of (signalsRes.data || []) as { raw_signals: { title: string; source: string; url?: string; score?: number; created_at: string } }[]) {
+  for (const row of (signalsRes.data || []) as unknown as { raw_signals: { title: string; source: string; url?: string; score?: number; created_at: string } }[]) {
     const sig = row.raw_signals
     if (!sig) continue
     const key = sig.url || sig.title
@@ -220,10 +220,6 @@ export async function GET(
   // ── Fast path: pre-generated brief exists and is not a draft ──
   const preBrief = preBriefRes.data as Record<string, unknown> | null
   if (preBrief && !preBrief.is_draft) {
-    const trendName = (preBrief.persona_roles as string[] | null)?.[0]
-      ? String(preBrief.persona_roles)
-      : getHypothesisDisplayTitle(null, trend.theme, null, id)
-
     // Use hypothesis title if available for display name
     const { data: hyp } = await supabase
       .from('problem_hypotheses')
