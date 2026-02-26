@@ -40,7 +40,9 @@ export async function PUT(request: Request) {
     time_horizon,
     team_size,
     risk_tolerance,
-    avoid_topics
+    avoid_topics,
+    goal,
+    experience_level,
   } = body
 
   if (!user_id) {
@@ -77,7 +79,9 @@ export async function PUT(request: Request) {
         time_horizon: current.time_horizon,
         team_size: current.team_size,
         risk_tolerance: current.risk_tolerance,
-        avoid_topics: current.avoid_topics
+        avoid_topics: current.avoid_topics,
+        goal: current.goal,
+        experience_level: current.experience_level,
       }
     })
 
@@ -93,6 +97,8 @@ export async function PUT(request: Request) {
   if (team_size !== undefined) updateData.team_size = team_size
   if (risk_tolerance !== undefined) updateData.risk_tolerance = risk_tolerance
   if (avoid_topics !== undefined) updateData.avoid_topics = avoid_topics
+  if (goal !== undefined) updateData.goal = goal
+  if (experience_level !== undefined) updateData.experience_level = experience_level
 
   const { data: updated, error } = await supabase
     .from('user_preferences')

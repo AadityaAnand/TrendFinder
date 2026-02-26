@@ -7,6 +7,8 @@ import { useAuth } from '@/lib/auth'
 interface UserPreferences {
   id: string
   user_id: string
+  goal?: string
+  experience_level?: string
   target_roles: string[]
   domains: string[]
   tech_stack: string[]
@@ -25,21 +27,34 @@ interface UserProfile {
   preferences: UserPreferences | null
 }
 
-const ROLE_OPTIONS = [
-  { value: 'developer', label: 'Developer', description: 'Building software products' },
-  { value: 'founder', label: 'Founder', description: 'Starting or running a business' },
-  { value: 'marketer', label: 'Marketer', description: 'Growing audiences and brands' },
-  { value: 'creator', label: 'Creator', description: 'Creating content and media' },
-  { value: 'researcher', label: 'Researcher', description: 'Exploring and analyzing' }
+const GOAL_OPTIONS = [
+  { value: 'saas', label: 'Building a SaaS', description: 'Web or mobile product with recurring revenue' },
+  { value: 'devtool', label: 'Building a dev tool', description: 'Tools, libraries, or APIs for developers' },
+  { value: 'content', label: 'Content or newsletter', description: 'Writing, courses, or media business' },
+  { value: 'research', label: 'Researching / investing', description: 'Tracking trends for decisions' },
+  { value: 'consulting', label: 'Consulting', description: 'Helping others navigate emerging opportunities' },
+  { value: 'exploring', label: 'Just exploring', description: "Curious about what's trending" },
+]
+
+const EXPERIENCE_OPTIONS = [
+  { value: 'beginner', label: 'Beginner', description: 'New to this area' },
+  { value: 'intermediate', label: 'Intermediate', description: 'Some experience, growing' },
+  { value: 'expert', label: 'Expert', description: 'Deep experience in this area' },
 ]
 
 const DOMAIN_OPTIONS = [
   { value: 'ai', label: 'AI/ML' },
+  { value: 'devops', label: 'DevOps' },
+  { value: 'frontend', label: 'Frontend' },
+  { value: 'backend', label: 'Backend' },
   { value: 'web3', label: 'Web3/Crypto' },
   { value: 'fintech', label: 'Fintech' },
   { value: 'health', label: 'Health/Wellness' },
   { value: 'ecommerce', label: 'E-commerce' },
-  { value: 'devtools', label: 'Developer Tools' }
+  { value: 'mobile', label: 'Mobile' },
+  { value: 'devtools', label: 'Developer Tools' },
+  { value: 'content_media', label: 'Content/Media' },
+  { value: 'saas_b2b', label: 'SaaS / B2B' },
 ]
 
 const STACK_OPTIONS = [
@@ -47,30 +62,31 @@ const STACK_OPTIONS = [
   { value: 'python', label: 'Python' },
   { value: 'node', label: 'Node.js' },
   { value: 'rust', label: 'Rust' },
-  { value: 'go', label: 'Go' }
+  { value: 'go', label: 'Go' },
 ]
 
 const TIME_HORIZON_OPTIONS = [
   { value: 'this_week', label: 'This week', description: 'Quick wins only' },
   { value: 'this_month', label: 'This month', description: 'Short-term projects' },
   { value: 'this_quarter', label: 'This quarter', description: 'Medium-term initiatives' },
-  { value: 'flexible', label: 'Flexible', description: 'Open to any timeline' }
+  { value: 'flexible', label: 'Flexible', description: 'Open to any timeline' },
 ]
 
 const TEAM_SIZE_OPTIONS = [
   { value: 'solo', label: 'Solo', description: 'Working alone' },
-  { value: 'small_team', label: 'Small team', description: '2-5 people' },
-  { value: 'larger_team', label: 'Larger team', description: '6+ people' }
+  { value: 'small_team', label: 'Small team', description: '2–5 people' },
+  { value: 'larger_team', label: 'Larger team', description: '6+ people' },
 ]
 
 const RISK_OPTIONS = [
   { value: 'low', label: 'Low', description: 'Prefer established trends' },
   { value: 'medium', label: 'Medium', description: 'Balance of risk and stability' },
-  { value: 'high', label: 'High', description: 'Early mover on emerging trends' }
+  { value: 'high', label: 'High', description: 'Early mover on emerging trends' },
 ]
 
 const STEPS = [
-  { key: 'role', title: 'Who are you?', subtitle: 'Select your primary roles' },
+  { key: 'goal', title: 'What brings you to Rishi?', subtitle: 'Choose what best describes your goal' },
+  { key: 'experience', title: 'How experienced are you?', subtitle: 'With your goal area' },
   { key: 'interests', title: 'What interests you?', subtitle: 'Pick domains and tech you care about' },
   { key: 'constraints', title: 'Your constraints', subtitle: 'Timeline, team, and risk appetite' },
 ]
@@ -123,6 +139,19 @@ function ChipSelect({
   )
 }
 
+function Tip({ text }: { text: string }) {
+  return (
+    <div className="flex items-start gap-3">
+      <span className="w-5 h-5 rounded-full bg-indigo-100 flex items-center justify-center shrink-0 mt-0.5">
+        <svg className="w-3 h-3 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+        </svg>
+      </span>
+      <p className="text-sm text-slate-600">{text}</p>
+    </div>
+  )
+}
+
 export default function SettingsPage() {
   const router = useRouter()
   const { profileId, hasPrefs, ready, isLoggedIn, markPrefsComplete } = useAuth()
@@ -135,13 +164,14 @@ export default function SettingsPage() {
   const [step, setStep] = useState(0)
   const [isOnboarding, setIsOnboarding] = useState(false)
 
-  const [targetRoles, setTargetRoles] = useState<string[]>([])
+  const [goal, setGoal] = useState('')
+  const [experienceLevel, setExperienceLevel] = useState('')
   const [domains, setDomains] = useState<string[]>([])
   const [techStack, setTechStack] = useState<string[]>([])
+  const [avoidTopics, setAvoidTopics] = useState('')
   const [timeHorizon, setTimeHorizon] = useState('flexible')
   const [teamSize, setTeamSize] = useState('solo')
   const [riskTolerance, setRiskTolerance] = useState('medium')
-  const [avoidTopics, setAvoidTopics] = useState('')
 
   useEffect(() => {
     if (!ready) return
@@ -162,9 +192,7 @@ export default function SettingsPage() {
     try {
       setLoading(true)
       setError(null)
-
       const res = await fetch(`/api/profile?user_id=${pid}`)
-
       if (res.ok) {
         const data = await res.json()
         setProfile(data)
@@ -184,7 +212,8 @@ export default function SettingsPage() {
 
   const initFormFromPreferences = (prefs: UserPreferences | null) => {
     if (prefs) {
-      setTargetRoles(prefs.target_roles || [])
+      setGoal(prefs.goal || '')
+      setExperienceLevel(prefs.experience_level || '')
       setDomains(prefs.domains || [])
       setTechStack(prefs.tech_stack || [])
       setTimeHorizon(prefs.time_horizon || 'flexible')
@@ -196,7 +225,6 @@ export default function SettingsPage() {
 
   const handleSave = async () => {
     if (!profile) return
-
     try {
       setSaving(true)
       setError(null)
@@ -207,13 +235,14 @@ export default function SettingsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           user_id: profile.id,
-          target_roles: targetRoles,
-          domains: domains,
+          goal,
+          experience_level: experienceLevel,
+          domains,
           tech_stack: techStack,
           time_horizon: timeHorizon,
           team_size: teamSize,
           risk_tolerance: riskTolerance,
-          avoid_topics: avoidTopics.split(',').map(t => t.trim()).filter(Boolean)
+          avoid_topics: avoidTopics.split(',').map(t => t.trim()).filter(Boolean),
         })
       })
 
@@ -227,7 +256,7 @@ export default function SettingsPage() {
       setLastSavedAt(new Date().toISOString())
 
       if (isOnboarding) {
-        router.push('/for-you')
+        setStep(4) // show welcome screen
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save. Please try again.')
@@ -256,17 +285,61 @@ export default function SettingsPage() {
     )
   }
 
+  // Welcome screen (onboarding only, shown after successful save)
+  if (step === 4 && isOnboarding) {
+    return (
+      <div className="min-h-screen bg-white">
+        <div className="max-w-xl mx-auto px-6 py-16 text-center">
+          <div className="w-14 h-14 rounded-full bg-emerald-50 flex items-center justify-center mx-auto mb-6">
+            <svg className="w-7 h-7 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+          <h1 className="text-2xl font-bold text-slate-900 mb-2">Your feed is ready</h1>
+          <p className="text-sm text-slate-500 mb-8 max-w-sm mx-auto">
+            Rishi will surface opportunities matched to your goals. Here&apos;s how to get the most from it:
+          </p>
+          <div className="text-left space-y-4 mb-10 max-w-sm mx-auto">
+            <Tip text="Save opportunities you find interesting — it improves future rankings." />
+            <Tip text="Dismiss anything off-target — it won't reappear." />
+            <Tip text="Check back daily — new briefs are published every morning." />
+          </div>
+          <button
+            onClick={() => router.push('/for-you')}
+            className="rishi-btn-primary"
+          >
+            Go to my feed &rarr;
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   const stepContent = [
-    <div key="role" className="space-y-6">
+    // Step 1: Goal
+    <div key="goal" className="space-y-6">
       <div>
-        <label className="block text-sm font-medium text-slate-500 mb-3">Your primary roles</label>
-        <ChipSelect options={ROLE_OPTIONS} selected={targetRoles} onChange={(v) => setTargetRoles(v as string[])} />
+        <label className="block text-sm font-medium text-slate-500 mb-3">Select your primary goal</label>
+        <ChipSelect options={GOAL_OPTIONS} selected={goal} onChange={(v) => setGoal(v as string)} multi={false} />
       </div>
     </div>,
 
+    // Step 2: Experience
+    <div key="experience" className="space-y-6">
+      <div>
+        <label className="block text-sm font-medium text-slate-500 mb-3">
+          {goal
+            ? `Your experience with ${GOAL_OPTIONS.find(g => g.value === goal)?.label ?? 'your goal'}`
+            : 'Your experience level'}
+        </label>
+        <ChipSelect options={EXPERIENCE_OPTIONS} selected={experienceLevel} onChange={(v) => setExperienceLevel(v as string)} multi={false} />
+      </div>
+    </div>,
+
+    // Step 3: Interests
     <div key="interests" className="space-y-6">
       <div>
-        <label className="block text-sm font-medium text-slate-500 mb-3">Domains you care about</label>
+        <label className="block text-sm font-medium text-slate-500 mb-3">Areas that interest you</label>
         <ChipSelect options={DOMAIN_OPTIONS} selected={domains} onChange={(v) => setDomains(v as string[])} />
       </div>
       <div>
@@ -286,6 +359,7 @@ export default function SettingsPage() {
       </div>
     </div>,
 
+    // Step 4: Constraints
     <div key="constraints" className="space-y-6">
       <div>
         <label className="block text-sm font-medium text-slate-500 mb-3">Time horizon</label>
@@ -319,6 +393,7 @@ export default function SettingsPage() {
           )}
         </div>
 
+        {/* Step progress indicator */}
         <div className="flex items-center gap-2 mb-8">
           {STEPS.map((s, i) => (
             <div key={s.key} className="flex items-center gap-2 grow">
@@ -396,7 +471,7 @@ export default function SettingsPage() {
               : saving
               ? 'Saving...'
               : isOnboarding
-              ? 'Save & see opportunities'
+              ? 'Save & continue'
               : 'Save preferences'
             }
           </button>

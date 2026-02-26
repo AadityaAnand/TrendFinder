@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { Nav } from "./components/Nav";
+import { FeedbackWidget } from "./components/FeedbackWidget";
 
 const inter = Inter({
   variable: "--font-sans",
@@ -9,8 +10,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Rishi — Evidence-Based Foresight Engine",
-  description: "Rishi watches developer signals, filters noise, and surfaces what's actionable. Evidence-backed trend intelligence from Hacker News, GitHub, Dev.to, and Reddit.",
+  title: "Rishi — Early opportunity radar for builders",
+  description: "Rishi scans 7 developer communities daily, surfaces what builders actually need, and delivers evidence-backed briefs — before the idea goes mainstream.",
 };
 
 export default function RootLayout({
@@ -25,6 +26,7 @@ export default function RootLayout({
       >
         <Nav />
         {children}
+        <FeedbackWidget />
       </body>
     </html>
   );
