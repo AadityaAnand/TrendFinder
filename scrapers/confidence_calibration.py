@@ -127,6 +127,24 @@ def _confidence_will_qualify(data: dict, stats: Optional[dict], factors: dict) -
         confidence -= 0.12
         factors['lifecycle'] = f"Unfavorable stage ({stage})"
 
+    # Source diversity factor (Phase 5+)
+    diversity = data.get('source_diversity_factor') or 0.0
+    if diversity >= 0.5:
+        confidence += 0.08
+        factors['diversity'] = f"Multi-source corroboration ({diversity:.2f})"
+    elif 0 < diversity < 0.2:
+        confidence -= 0.05
+        factors['diversity'] = f"Single-source signal ({diversity:.2f})"
+
+    # Stability score (Phase 12)
+    stability = data.get('stability_score') or 1.0  # default stable if no history
+    if stability >= 0.8:
+        confidence += 0.06
+        factors['stability'] = f"Stable trend (score {stability:.2f})"
+    elif stability < 0.3:
+        confidence -= 0.08
+        factors['stability'] = f"Volatile trend (score {stability:.2f})"
+
     confidence = max(0.05, min(0.95, confidence))
 
     # Confidence interval (wider with less data)
@@ -710,7 +728,7 @@ def make_batch_predictions(
 
     # Get trends from snapshot
     response = supabase.table('trend_snapshot_items') \
-        .select('trend_id, momentum_score, signal_count') \
+        .select('trend_id, momentum_score, signal_count, source_diversity_factor, stability_score') \
         .eq('snapshot_id', snapshot_id) \
         .execute()
 

@@ -64,6 +64,9 @@ function ForYouContent() {
   const [loading, setLoading] = useState(true)
   const [hasQualified, setHasQualified] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [snapshotId, setSnapshotId] = useState<string | null>(null)
+  const [feedbackMap, setFeedbackMap] = useState<Record<string, 'saved' | 'dismissed'>>({})
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     if (!ready) return
@@ -84,6 +87,7 @@ function ForYouContent() {
       if (oppRes.ok) {
         const data = await oppRes.json()
         opps = data.opportunities || []
+        if (data.snapshot_id) setSnapshotId(data.snapshot_id)
       }
 
       if (opps.length > 0) {
@@ -105,6 +109,23 @@ function ForYouContent() {
     } catch { /* silent */ } finally {
       setLoading(false)
     }
+  }
+
+  const handleFeedback = async (oppId: string, type: 'saved' | 'dismissed') => {
+    setFeedbackMap(m => ({ ...m, [oppId]: type }))
+    if (type === 'dismissed') setDismissedIds(s => new Set(s).add(oppId))
+    try {
+      await fetch('/api/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: profileId,
+          opportunity_id: oppId,
+          snapshot_id: snapshotId,
+          feedback_type: type
+        })
+      })
+    } catch { /* silent — optimistic UI already applied */ }
   }
 
   void searchParams
@@ -171,6 +192,7 @@ function ForYouContent() {
 
             <div className="space-y-4">
               {opportunities.map((opp) => {
+                if (dismissedIds.has(opp.id)) return null
                 const h = opp.hypothesis
                 const painSignals = h ? parseJsonField<string[]>(h.pain_signals, []) : []
                 const whoAffects = h ? parseJsonField<string[]>(h.who_it_affects, []) : []
@@ -299,13 +321,33 @@ function ForYouContent() {
                       </div>
                     )}
 
-                    <div className="mt-3 pt-3 border-t border-slate-100">
+                    <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between">
                       <Link
                         href={`/trends/${opp.trend_id}`}
                         className="text-xs font-medium text-indigo-600 hover:text-indigo-700 transition-colors"
                       >
                         Open Brief &rarr;
                       </Link>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleFeedback(opp.id, 'saved')}
+                          title="Save"
+                          className={`text-xs px-2 py-1 rounded transition-colors ${
+                            feedbackMap[opp.id] === 'saved'
+                              ? 'text-emerald-700 bg-emerald-50'
+                              : 'text-slate-400 hover:text-slate-600'
+                          }`}
+                        >
+                          {feedbackMap[opp.id] === 'saved' ? 'Saved' : 'Save'}
+                        </button>
+                        <button
+                          onClick={() => handleFeedback(opp.id, 'dismissed')}
+                          title="Not for me"
+                          className="text-xs text-slate-400 hover:text-slate-600 px-2 py-1 rounded transition-colors"
+                        >
+                          Dismiss
+                        </button>
+                      </div>
                     </div>
                   </article>
                 )

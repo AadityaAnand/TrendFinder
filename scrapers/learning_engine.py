@@ -75,6 +75,7 @@ def get_user_feedback_with_scores(user_id: str, days_back: int = 30) -> list[dic
     preferences = prefs_resp.data if prefs_resp.data else {}
 
     # Combine feedback with opportunity data
+    now = datetime.now(timezone.utc)
     results = []
     for fb in feedback_resp.data:
         opp = opp_map.get(fb['opportunity_id'])
@@ -83,6 +84,11 @@ def get_user_feedback_with_scores(user_id: str, days_back: int = 30) -> list[dic
 
         trend = trend_map.get(opp['trend_id'], {})
 
+        created_str = fb['created_at'].replace('Z', '+00:00')
+        created = datetime.fromisoformat(created_str)
+        days_old = (now - created).days
+        weight = 0.5 ** (days_old / 30.0)  # half-life of 30 days
+
         results.append({
             'opportunity_id': fb['opportunity_id'],
             'feedback_type': fb['feedback_type'],
@@ -90,7 +96,8 @@ def get_user_feedback_with_scores(user_id: str, days_back: int = 30) -> list[dic
             'trend_theme': trend.get('theme', ''),
             'trend_description': trend.get('description', ''),
             'opportunity_score': opp.get('opportunity_score', 0),
-            'preferences': preferences
+            'preferences': preferences,
+            'weight': weight,
         })
 
     return results
@@ -103,6 +110,9 @@ def compute_dimension_correlation(feedback_items: list[dict], dimension: str) ->
     Returns a value in [-1, 1]:
     - Positive: dimension correlates with saved/acted
     - Negative: dimension correlates with dismissed
+
+    Uses exponential time-decay weights (half-life 30 days) so recent
+    feedback counts more than old feedback.
     """
     from relevance_scorer import (
         compute_role_match,
@@ -112,12 +122,13 @@ def compute_dimension_correlation(feedback_items: list[dict], dimension: str) ->
         compute_risk_fit
     )
 
-    positive_scores = []
-    negative_scores = []
+    positive_pairs: list[tuple[float, float]] = []  # (score, weight)
+    negative_pairs: list[tuple[float, float]] = []
 
     for item in feedback_items:
         prefs = item.get('preferences', {})
         text = f"{item.get('trend_theme', '')} {item.get('trend_description', '')}"
+        weight = item.get('weight', 1.0)
 
         # Compute the dimension score
         if dimension == 'role_match':
@@ -139,15 +150,21 @@ def compute_dimension_correlation(feedback_items: list[dict], dimension: str) ->
 
         # Categorize by feedback type
         if item['feedback_type'] in ('saved', 'acted'):
-            positive_scores.append(score)
+            positive_pairs.append((score, weight))
         elif item['feedback_type'] in ('dismissed', 'not_relevant'):
-            negative_scores.append(score)
+            negative_pairs.append((score, weight))
 
-    if not positive_scores and not negative_scores:
+    if not positive_pairs and not negative_pairs:
         return 0.0
 
-    avg_positive = sum(positive_scores) / len(positive_scores) if positive_scores else 0.5
-    avg_negative = sum(negative_scores) / len(negative_scores) if negative_scores else 0.5
+    def _weighted_avg(pairs: list[tuple[float, float]]) -> float:
+        if not pairs:
+            return 0.5
+        total_w = sum(w for _, w in pairs)
+        return sum(s * w for s, w in pairs) / total_w if total_w > 0 else 0.5
+
+    avg_positive = _weighted_avg(positive_pairs)
+    avg_negative = _weighted_avg(negative_pairs)
 
     # Correlation: how much higher is positive avg than negative avg
     correlation = avg_positive - avg_negative
