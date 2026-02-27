@@ -4,6 +4,7 @@ from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 from supabase import create_client, Client
 import calendar
+from scraper_utils import update_scraper_health
 
 load_dotenv()
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -97,30 +98,37 @@ def save_signal(post_data: dict) -> bool:
 
 
 def main():
-    print("Fetching Substack newsletter posts...")
     saved_count = 0
-    total_fetched = 0
+    error = None
+    try:
+        print("Fetching Substack newsletter posts...")
+        total_fetched = 0
 
-    for name in NEWSLETTERS:
-        print(f"  Fetching {name}.substack.com...")
-        entries = fetch_feed(name)
-        total_fetched += len(entries)
+        for name in NEWSLETTERS:
+            print(f"  Fetching {name}.substack.com...")
+            entries = fetch_feed(name)
+            total_fetched += len(entries)
 
-        for entry in entries:
-            data = {
-                'source': 'substack',
-                'title': entry['title'],
-                'url': entry['url'],
-                'score': 0,
-                'content': None,
-                'comments_count': 0,
-                'created_at': entry['created_at'],
-            }
-            if save_signal(data):
-                saved_count += 1
-                print(f"    Saved: {entry['title'][:70]}...")
+            for entry in entries:
+                data = {
+                    'source': 'substack',
+                    'title': entry['title'],
+                    'url': entry['url'],
+                    'score': 0,
+                    'content': None,
+                    'comments_count': 0,
+                    'created_at': entry['created_at'],
+                }
+                if save_signal(data):
+                    saved_count += 1
+                    print(f"    Saved: {entry['title'][:70]}...")
 
-    print(f"\nSubstack scraping complete. Fetched {total_fetched} entries, saved {saved_count}.")
+        print(f"\nSubstack scraping complete. Fetched {total_fetched} entries, saved {saved_count}.")
+    except Exception as e:
+        error = e
+        print(f"Scraper error: {e}")
+    finally:
+        update_scraper_health('substack', success=(error is None), signal_count=saved_count, error=error)
 
 
 if __name__ == "__main__":

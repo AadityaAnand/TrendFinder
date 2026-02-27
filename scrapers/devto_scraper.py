@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from supabase import create_client, Client
 import re
+from scraper_utils import update_scraper_health
 
 load_dotenv()
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -47,28 +48,33 @@ def save_to_supabase(article):
         return False
 
 def main():
-    print("Fetching Dev.to articles...")
-    articles = fetch_devto_articles()
-    print(f"Found {len(articles)} articles to process")
-
-    if not articles:
-        print("No articles found!")
-        return
-
     saved_count = 0
+    error = None
+    try:
+        print("Fetching Dev.to articles...")
+        articles = fetch_devto_articles()
+        print(f"Found {len(articles)} articles to process")
 
-    for article in articles:
-        if 'published_at' not in article:
-            continue
+        if not articles:
+            print("No articles found!")
 
-        if not is_recent(article.get('published_at', '')):
-            continue
+        for article in articles:
+            if 'published_at' not in article:
+                continue
 
-        if save_to_supabase(article):
-            saved_count += 1
-            print(f"Saved: {article.get('title', 'Untitled')[:60]}...")
+            if not is_recent(article.get('published_at', '')):
+                continue
 
-    print(f"\nScraping complete! Saved {saved_count} articles to Supabase")
+            if save_to_supabase(article):
+                saved_count += 1
+                print(f"Saved: {article.get('title', 'Untitled')[:60]}...")
+
+        print(f"\nScraping complete! Saved {saved_count} articles to Supabase")
+    except Exception as e:
+        error = e
+        print(f"Scraper error: {e}")
+    finally:
+        update_scraper_health('devto', success=(error is None), signal_count=saved_count, error=error)
 
 if __name__ == "__main__":
     main()

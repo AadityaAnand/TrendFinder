@@ -3,6 +3,7 @@ import requests
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from supabase import create_client, Client
+from scraper_utils import update_scraper_health
 load_dotenv()
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
@@ -46,19 +47,26 @@ def save_to_supabase(repo):
     except Exception as e:
         return False
 def main():
-    repos = fetch_trending_repos()
-    print(f"Found {len(repos)} repositories to process")
-    
-    if not repos:
-        print("No repositories found!")
-        return
-    
     saved_count = 0
-    
-    for repo in repos:
-        if save_to_supabase(repo):
-            saved_count += 1
-            print(f"Saved: {repo.get('full_name', 'Untitled')[:60]}... ({repo.get('stargazers_count', 0)})")
+    error = None
+    try:
+        repos = fetch_trending_repos()
+        print(f"Found {len(repos)} repositories to process")
+
+        if not repos:
+            print("No repositories found!")
+
+        for repo in repos:
+            if save_to_supabase(repo):
+                saved_count += 1
+                print(f"Saved: {repo.get('full_name', 'Untitled')[:60]}... ({repo.get('stargazers_count', 0)})")
+
+        print(f"\nScraping complete! Saved {saved_count} repositories to Supabase")
+    except Exception as e:
+        error = e
+        print(f"Scraper error: {e}")
+    finally:
+        update_scraper_health('github', success=(error is None), signal_count=saved_count, error=error)
 
 if __name__ == "__main__":
     main()

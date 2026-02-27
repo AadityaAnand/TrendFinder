@@ -365,6 +365,49 @@ def match_cluster_to_trend(
     }
 
 
+def _calculate_source_diversity(signals: list[dict], max_sources: int = 7) -> float:
+    """
+    Multi-factor source diversity score (0–1):
+      - 70% source breadth: linear scale from 1 source (0.0) to max_sources (1.0)
+      - 30% time diversity: std dev of signal timestamps scaled to 7-day range
+      - Concentration penalty: -30% if one source > 90% of signals, -10% if > 70%
+    """
+    if not signals:
+        return 0.0
+
+    source_counts: dict[str, int] = {}
+    timestamps: list[float] = []
+    for s in signals:
+        src = s.get('source', '')
+        source_counts[src] = source_counts.get(src, 0) + 1
+        raw_ts = s.get('created_at')
+        if raw_ts:
+            try:
+                ts_str = str(raw_ts).replace('Z', '+00:00')
+                ts = datetime.fromisoformat(ts_str).timestamp()
+                timestamps.append(ts)
+            except Exception:
+                pass
+
+    total = sum(source_counts.values())
+    unique = len(source_counts)
+
+    source_breadth = min(1.0, (unique - 1) / (max_sources - 1)) if max_sources > 1 else 0.0
+
+    top_pct = max(source_counts.values()) / total if total else 1.0
+    concentration_penalty = 0.3 if top_pct > 0.9 else (0.1 if top_pct > 0.7 else 0.0)
+
+    if len(timestamps) >= 2:
+        import statistics as _stats
+        std_days = _stats.stdev(timestamps) / 86400
+        time_diversity = min(1.0, std_days / 7.0)
+    else:
+        time_diversity = 0.0
+
+    diversity = (source_breadth * 0.7 + time_diversity * 0.3) * (1 - concentration_penalty)
+    return round(min(max(diversity, 0.0), 1.0), 4)
+
+
 def calculate_cluster_momentum(
     signals: list[dict],
     centroid: np.ndarray,
@@ -399,11 +442,10 @@ def calculate_cluster_momentum(
     top_k = min(3, len(sorted_scores))
     top3_mean = np.mean(sorted_scores[:top_k]) if sorted_scores else 0
 
-    # Source diversity: scales linearly from 0 (1 source) to 1.0 (all MAX_SOURCES).
-    # With 7 configured sources, each additional source adds ~0.17.
+    # Source diversity: multi-factor formula combining source breadth,
+    # concentration penalty, and time spread.
     MAX_SOURCES = 7
-    unique_sources = set(s.get('source', '') for s in signals)
-    source_diversity_factor = min(1.0, (len(unique_sources) - 1) / (MAX_SOURCES - 1)) if MAX_SOURCES > 1 else 0.0
+    source_diversity_factor = _calculate_source_diversity(signals, MAX_SOURCES)
 
     # Demand density from Layer 1 regex
     demand_count = 0

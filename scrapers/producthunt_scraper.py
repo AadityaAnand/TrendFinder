@@ -3,6 +3,7 @@ import requests
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 from supabase import create_client, Client
+from scraper_utils import update_scraper_health
 
 load_dotenv()
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -67,51 +68,57 @@ def save_signal(post_data: dict) -> bool:
 
 
 def main():
-    if not PRODUCTHUNT_API_TOKEN:
-        print("Missing PRODUCTHUNT_API_TOKEN — skipping Product Hunt scraper")
-        return
-
-    print("Fetching Product Hunt posts...")
-    posts = fetch_posts()
-    print(f"Found {len(posts)} posts")
-
     saved_count = 0
-    for post in posts:
-        name = post.get("name", "")
-        tagline = post.get("tagline", "")
-        url = post.get("url", "")
-        votes = post.get("votesCount", 0)
-        comments = post.get("commentsCount", 0)
-        created_at_raw = post.get("createdAt", "")
+    error = None
+    try:
+        if not PRODUCTHUNT_API_TOKEN:
+            raise ValueError("Missing PRODUCTHUNT_API_TOKEN — skipping Product Hunt scraper")
 
-        if not url:
-            continue
+        print("Fetching Product Hunt posts...")
+        posts = fetch_posts()
+        print(f"Found {len(posts)} posts")
 
-        # Normalise created_at to ISO format
-        try:
-            created_at = datetime.fromisoformat(
-                created_at_raw.replace("Z", "+00:00")
-            ).astimezone(timezone.utc).isoformat()
-        except Exception:
-            created_at = datetime.now(timezone.utc).isoformat()
+        for post in posts:
+            name = post.get("name", "")
+            tagline = post.get("tagline", "")
+            url = post.get("url", "")
+            votes = post.get("votesCount", 0)
+            comments = post.get("commentsCount", 0)
+            created_at_raw = post.get("createdAt", "")
 
-        title = f"{name} — {tagline}" if tagline else name
+            if not url:
+                continue
 
-        data = {
-            'source': 'producthunt',
-            'title': title,
-            'url': url,
-            'score': votes,
-            'content': None,
-            'comments_count': comments,
-            'created_at': created_at,
-        }
+            # Normalise created_at to ISO format
+            try:
+                created_at = datetime.fromisoformat(
+                    created_at_raw.replace("Z", "+00:00")
+                ).astimezone(timezone.utc).isoformat()
+            except Exception:
+                created_at = datetime.now(timezone.utc).isoformat()
 
-        if save_signal(data):
-            saved_count += 1
-            print(f"  Saved: {title[:70]}...")
+            title = f"{name} — {tagline}" if tagline else name
 
-    print(f"\nProduct Hunt scraping complete. Saved {saved_count} posts.")
+            data = {
+                'source': 'producthunt',
+                'title': title,
+                'url': url,
+                'score': votes,
+                'content': None,
+                'comments_count': comments,
+                'created_at': created_at,
+            }
+
+            if save_signal(data):
+                saved_count += 1
+                print(f"  Saved: {title[:70]}...")
+
+        print(f"\nProduct Hunt scraping complete. Saved {saved_count} posts.")
+    except Exception as e:
+        error = e
+        print(f"Scraper error: {e}")
+    finally:
+        update_scraper_health('producthunt', success=(error is None), signal_count=saved_count, error=error)
 
 
 if __name__ == "__main__":

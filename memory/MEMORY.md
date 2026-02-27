@@ -17,6 +17,7 @@
 - **Phase 6**: Independent per-scraper GitHub Actions workflows, Supabase Realtime LiveSignalCounter on /explore, `migrations/enable_raw_signals_realtime.sql`
 - **Phase 7**: Save/dismiss buttons on /for-you (snapshotId from API response, feedbackMap/dismissedIds state), confidence_calibration.py adds source_diversity_factor + stability_score factors, learning_engine.py adds exponential decay (half-life 30 days), admin dashboard at /admin, A/B testing (user_experiments + experiment_metrics tables, /api/experiments/assign + /api/experiments/metric routes)
 - **Phase 8**: Landing page overhaul (headline "Spot opportunities before they're obvious", Scan/Analyze/Deliver steps, sample brief preview card, CTA banner), 4-step onboarding rewrite (goal → experience → interests → constraints → welcome screen), FAQ page at /faq (no auth), FeedbackWidget component (fixed-position, logged-in only), survey API at /api/feedback/survey, DB migrations for goal/experience_level columns and user_feedback_surveys table
+- **Phase 9a**: 4x daily detection (cron `0 0,6,12,18 * * *`, 5h interval check replacing UTC-day check), scraper health tracking (scraper_utils.py, create_scraper_health.sql, all 7 scrapers updated with try/finally), improved source diversity formula (_calculate_source_diversity with time diversity + concentration penalty), hypothesis fallback summary (_generate_fallback_summary replaces "Insufficient evidence" message), brief_generator signal_quotes + source_breakdown fields (add_brief_signal_quotes.sql), alerts_engine scraper failure alerts, human landing page rewrite, /admin/pipeline dashboard
 
 ## Important Files
 - `scrapers/confidence_calibration.py` — `_confidence_will_qualify()` now reads source_diversity_factor + stability_score from trend_snapshot_items
@@ -34,3 +35,5 @@
 - `user_experiments` / `experiment_metrics` — A/B testing (Phase 7, needs migration)
 - `user_preferences` — has goal, experience_level columns (Phase 8, needs migration: add_goal_experience.sql)
 - `user_feedback_surveys` — working_well, could_be_better, want_to_see fields; user_id nullable (Phase 8, needs migration: add_feedback_surveys.sql)
+- `scraper_health` — source (UNIQUE), status (healthy/degraded/failed), consecutive_failures, total_signals_24h (Phase 9a, needs migration: scrapers/migrations/create_scraper_health.sql)
+- `opportunity_briefs` — has signal_quotes JSONB, source_breakdown JSONB (Phase 9a, needs migration: scrapers/migrations/add_brief_signal_quotes.sql)

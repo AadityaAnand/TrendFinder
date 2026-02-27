@@ -494,6 +494,34 @@ def detect_competition_alerts(
 # MAIN PROCESSING
 # ============================================================
 
+def check_scraper_health_alerts() -> list[dict]:
+    """
+    Return warning dicts for any scraper with 2+ consecutive failures.
+    Called from process_alerts_for_snapshot; logs to pipeline run stats.
+    """
+    supabase = get_supabase()
+    try:
+        result = supabase.table('scraper_health') \
+            .select('source, consecutive_failures, last_error, last_success') \
+            .gte('consecutive_failures', 2) \
+            .execute()
+    except Exception:
+        return []
+
+    warnings = []
+    for row in (result.data or []):
+        warnings.append({
+            'alert_type': 'scraper_failure',
+            'message': (
+                f"Scraper '{row['source']}' has failed {row['consecutive_failures']} consecutive "
+                f"times. Last success: {row['last_success']}. Error: {row['last_error']}"
+            ),
+            'severity': 'high',
+            'source': row['source'],
+        })
+    return warnings
+
+
 def process_alerts_for_snapshot(snapshot_id: str) -> dict:
     """
     Process all alerts for a snapshot.
@@ -619,6 +647,15 @@ def process_alerts_for_snapshot(snapshot_id: str) -> dict:
 
         except Exception as e:
             stats['errors'].append(f"stage_transition/{trans['trend_id']}: {str(e)}")
+
+    # Check scraper health — log warnings for consecutive failures
+    try:
+        scraper_warnings = check_scraper_health_alerts()
+        for w in scraper_warnings:
+            logger.warning(f"[scraper_health] {w['message']}")
+            stats['by_type']['scraper_failure'] = stats['by_type'].get('scraper_failure', 0) + 1
+    except Exception as e:
+        stats['errors'].append(f"scraper_health_check: {str(e)}")
 
     return stats
 

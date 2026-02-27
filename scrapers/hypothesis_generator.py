@@ -3,6 +3,7 @@ import re
 import json
 import hashlib
 import logging
+import statistics
 from typing import Optional
 
 from dotenv import load_dotenv
@@ -127,6 +128,41 @@ def get_existing_hypothesis(snapshot_id: str, trend_id: str) -> Optional[dict]:
         .limit(1) \
         .execute()
     return response.data[0] if response.data else None
+
+
+def _generate_fallback_summary(trend_name: str, signals: list[dict], demand_evidence: list[dict]) -> str:
+    """
+    Build a genuine, readable summary from raw signals when LLM gate is not passed.
+    Never returns the 'Insufficient evidence diversity...' placeholder.
+    """
+    top = sorted(signals, key=lambda s: s.get('score', 0), reverse=True)[:5]
+    sources = list(dict.fromkeys(s.get('source', '') for s in top if s.get('source')))
+
+    # Extract frequent non-stopword terms from signal titles
+    stopwords = {
+        'the', 'a', 'an', 'of', 'in', 'for', 'to', 'and', 'or', 'is', 'are',
+        'with', 'on', 'it', 'this', 'that', 'at', 'by', 'how', 'new', 'best',
+        'show', 'hn', 'ask', 'tell', 'your', 'my', 'our', 'from', 'about',
+    }
+    term_counts: dict[str, int] = {}
+    for s in top:
+        for w in s.get('title', '').lower().split():
+            w = w.strip('.,?!:;()[]"\'')
+            if len(w) > 3 and w not in stopwords and w.isalpha():
+                term_counts[w] = term_counts.get(w, 0) + 1
+    top_terms = [t for t, _ in sorted(term_counts.items(), key=lambda x: -x[1])[:4]]
+
+    source_str = ', '.join(sources) if sources else 'one community'
+    terms_str = ', '.join(top_terms) if top_terms else trend_name
+    demand_note = (
+        f" {len(demand_evidence)} signal(s) show active demand."
+        if demand_evidence else ""
+    )
+
+    return (
+        f"{len(signals)} discussion(s) on {source_str} around {terms_str}. "
+        f"This hasn't spread across multiple platforms yet, but the conversation is active.{demand_note}"
+    )
 
 
 def check_topic_only_deterministic(trend_name: str, evidence: list[dict]) -> tuple[bool, list[str]]:
@@ -443,7 +479,7 @@ def run_hypothesis_generation() -> dict:
             logger.info(f"Uncertain (no LLM): {trend_name} (confidence={confidence:.2f})")
             hypothesis = {
                 'hypothesis_title': trend_name,
-                'hypothesis_summary': f"Insufficient evidence diversity to form a problem hypothesis. {len(evidence)} signal(s) from limited sources.",
+                'hypothesis_summary': _generate_fallback_summary(trend_name, evidence, demand_evidence),
                 'who_it_affects': [],
                 'pain_signals': [],
                 'demand_evidence': demand_evidence,
@@ -459,7 +495,7 @@ def run_hypothesis_generation() -> dict:
             logger.warning(f"LLM failed for {trend_name}, marking uncertain")
             hypothesis = {
                 'hypothesis_title': trend_name,
-                'hypothesis_summary': 'Hypothesis generation failed. Evidence exists but could not be synthesized.',
+                'hypothesis_summary': _generate_fallback_summary(trend_name, evidence, demand_evidence),
                 'who_it_affects': [],
                 'pain_signals': [],
                 'demand_evidence': demand_evidence,

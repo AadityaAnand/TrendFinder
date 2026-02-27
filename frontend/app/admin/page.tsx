@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { getServerSupabase } from '@/lib/supabase-server'
 
 export default async function AdminPage() {
@@ -31,7 +32,10 @@ export default async function AdminPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-6 py-12">
-      <h1 className="text-2xl font-semibold text-slate-900 mb-2">Calibration Dashboard</h1>
+      <div className="flex items-center justify-between mb-2">
+        <h1 className="text-2xl font-semibold text-slate-900">Calibration Dashboard</h1>
+        <Link href="/admin/pipeline" className="text-sm text-indigo-600 hover:underline">Pipeline status →</Link>
+      </div>
       <p className="text-sm text-slate-500 mb-10">Confidence prediction accuracy metrics</p>
 
       <div className="grid grid-cols-3 gap-4 mb-10">

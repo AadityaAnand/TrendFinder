@@ -2,7 +2,7 @@ import os
 import sys
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 from dotenv import load_dotenv
@@ -22,6 +22,7 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 PIPELINE_VERSION = 'pipeline-v1'
 EXPECTED_SCORING_VERSION = 'norm-p90-decay7d-v1'
+PIPELINE_MIN_INTERVAL_HOURS = 5  # Minimum gap between pipeline runs (supports 4x daily)
 
 DRIFT_THRESHOLDS = {
     'momentum_mean_change': 0.3,
@@ -36,12 +37,13 @@ def get_today_utc() -> str:
 
 
 def check_already_ran_today() -> Optional[str]:
-    today = get_today_utc()
+    """Return recent run ID if pipeline ran successfully within the last PIPELINE_MIN_INTERVAL_HOURS."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=PIPELINE_MIN_INTERVAL_HOURS)).isoformat()
     response = supabase.table('pipeline_runs') \
         .select('id, run_at, success') \
-        .gte('run_at', f'{today}T00:00:00Z') \
-        .lt('run_at', f'{today}T23:59:59Z') \
+        .gte('run_at', cutoff) \
         .eq('success', True) \
+        .order('run_at', desc=True) \
         .limit(1) \
         .execute()
     if response.data:
@@ -50,11 +52,12 @@ def check_already_ran_today() -> Optional[str]:
 
 
 def check_snapshot_exists_today() -> Optional[str]:
-    today = get_today_utc()
+    """Return recent snapshot ID if a snapshot was created within the last PIPELINE_MIN_INTERVAL_HOURS."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=PIPELINE_MIN_INTERVAL_HOURS)).isoformat()
     response = supabase.table('trend_snapshots') \
         .select('id, run_at') \
-        .gte('run_at', f'{today}T00:00:00Z') \
-        .lt('run_at', f'{today}T23:59:59Z') \
+        .gte('run_at', cutoff) \
+        .order('run_at', desc=True) \
         .limit(1) \
         .execute()
     if response.data:

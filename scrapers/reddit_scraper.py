@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from dotenv import load_dotenv
 from supabase import create_client, Client
 import praw
+from scraper_utils import update_scraper_health
 
 load_dotenv()
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -51,60 +52,62 @@ def save_signal(post_data: dict) -> bool:
 
 
 def main():
-    if not REDDIT_CLIENT_ID or not REDDIT_CLIENT_SECRET:
-        print("Missing REDDIT_CLIENT_ID or REDDIT_CLIENT_SECRET — skipping Reddit scraper")
-        return
-
-    try:
-        reddit = get_reddit_client()
-    except Exception as e:
-        print(f"Failed to initialise Reddit client: {e}")
-        return
-
-    seen_urls: set[str] = set()
     saved_count = 0
-    skipped_count = 0
+    error = None
+    try:
+        if not REDDIT_CLIENT_ID or not REDDIT_CLIENT_SECRET:
+            raise ValueError("Missing REDDIT_CLIENT_ID or REDDIT_CLIENT_SECRET — skipping Reddit scraper")
 
-    for subreddit_name in SUBREDDITS:
-        print(f"Scraping r/{subreddit_name}...")
-        try:
-            subreddit = reddit.subreddit(subreddit_name)
-            for post in subreddit.hot(limit=POSTS_PER_SUBREDDIT):
-                if post.score < MIN_SCORE:
-                    skipped_count += 1
-                    continue
+        reddit = get_reddit_client()
 
-                url = f"https://reddit.com{post.permalink}"
+        seen_urls: set[str] = set()
+        skipped_count = 0
 
-                # Deduplicate within this run (same post can appear in multiple subreddits)
-                if url in seen_urls:
-                    skipped_count += 1
-                    continue
-                seen_urls.add(url)
+        for subreddit_name in SUBREDDITS:
+            print(f"Scraping r/{subreddit_name}...")
+            try:
+                subreddit = reddit.subreddit(subreddit_name)
+                for post in subreddit.hot(limit=POSTS_PER_SUBREDDIT):
+                    if post.score < MIN_SCORE:
+                        skipped_count += 1
+                        continue
 
-                created_at = datetime.fromtimestamp(
-                    post.created_utc, tz=timezone.utc
-                ).isoformat()
+                    url = f"https://reddit.com{post.permalink}"
 
-                data = {
-                    'source': 'reddit',
-                    'title': post.title,
-                    'url': url,
-                    'score': post.score,
-                    'content': None,
-                    'comments_count': post.num_comments,
-                    'created_at': created_at,
-                }
+                    # Deduplicate within this run (same post can appear in multiple subreddits)
+                    if url in seen_urls:
+                        skipped_count += 1
+                        continue
+                    seen_urls.add(url)
 
-                if save_signal(data):
-                    saved_count += 1
-                    print(f"  Saved: {post.title[:70]}...")
+                    created_at = datetime.fromtimestamp(
+                        post.created_utc, tz=timezone.utc
+                    ).isoformat()
 
-        except Exception as e:
-            print(f"  Warning: failed to scrape r/{subreddit_name}: {e}")
-            continue
+                    data = {
+                        'source': 'reddit',
+                        'title': post.title,
+                        'url': url,
+                        'score': post.score,
+                        'content': None,
+                        'comments_count': post.num_comments,
+                        'created_at': created_at,
+                    }
 
-    print(f"\nReddit scraping complete. Saved {saved_count} posts ({skipped_count} skipped).")
+                    if save_signal(data):
+                        saved_count += 1
+                        print(f"  Saved: {post.title[:70]}...")
+
+            except Exception as e:
+                print(f"  Warning: failed to scrape r/{subreddit_name}: {e}")
+                continue
+
+        print(f"\nReddit scraping complete. Saved {saved_count} posts ({skipped_count} skipped).")
+    except Exception as e:
+        error = e
+        print(f"Scraper error: {e}")
+    finally:
+        update_scraper_health('reddit', success=(error is None), signal_count=saved_count, error=error)
 
 
 if __name__ == "__main__":

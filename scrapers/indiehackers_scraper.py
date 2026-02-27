@@ -4,6 +4,7 @@ from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 from supabase import create_client, Client
 from bs4 import BeautifulSoup
+from scraper_utils import update_scraper_health
 
 load_dotenv()
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -79,29 +80,36 @@ def save_signal(post_data: dict) -> bool:
 
 
 def main():
-    print("Fetching IndieHackers trending posts...")
-    posts = fetch_posts()
-    print(f"Found {len(posts)} posts")
-
-    now_utc = datetime.now(timezone.utc).isoformat()
     saved_count = 0
+    error = None
+    try:
+        print("Fetching IndieHackers trending posts...")
+        posts = fetch_posts()
+        print(f"Found {len(posts)} posts")
 
-    for post in posts:
-        data = {
-            'source': 'indiehackers',
-            'title': post['title'],
-            'url': post['url'],
-            'score': 0,
-            'content': None,
-            'comments_count': 0,
-            'created_at': now_utc,
-        }
+        now_utc = datetime.now(timezone.utc).isoformat()
 
-        if save_signal(data):
-            saved_count += 1
-            print(f"  Saved: {post['title'][:70]}...")
+        for post in posts:
+            data = {
+                'source': 'indiehackers',
+                'title': post['title'],
+                'url': post['url'],
+                'score': 0,
+                'content': None,
+                'comments_count': 0,
+                'created_at': now_utc,
+            }
 
-    print(f"\nIndieHackers scraping complete. Saved {saved_count} posts.")
+            if save_signal(data):
+                saved_count += 1
+                print(f"  Saved: {post['title'][:70]}...")
+
+        print(f"\nIndieHackers scraping complete. Saved {saved_count} posts.")
+    except Exception as e:
+        error = e
+        print(f"Scraper error: {e}")
+    finally:
+        update_scraper_health('indiehackers', success=(error is None), signal_count=saved_count, error=error)
 
 
 if __name__ == "__main__":

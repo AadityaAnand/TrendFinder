@@ -196,6 +196,23 @@ def _parse_json_field(value, fallback):
     return fallback
 
 
+def get_top_signal_quotes(signals: list[dict], limit: int = 5) -> tuple[list[dict], dict]:
+    """
+    Return top `limit` signals as quote dicts plus a source breakdown.
+    Signals should already be sorted by score descending (from get_top_signals).
+    """
+    quotes = [
+        {'title': s['title'], 'source': s.get('source', ''), 'url': s.get('url', '')}
+        for s in signals[:limit]
+        if s.get('title')
+    ]
+    source_breakdown: dict[str, int] = {}
+    for q in quotes:
+        src = q['source']
+        source_breakdown[src] = source_breakdown.get(src, 0) + 1
+    return quotes, source_breakdown
+
+
 def build_section_a(explanation: dict, signals: list[dict]) -> tuple[str, list[dict]]:
     """Section A: What Is Happening — existing why_this_trend + top 3 signal citations."""
     synthesis = explanation.get('why_this_trend') or ''
@@ -439,6 +456,9 @@ def generate_opportunity_brief(
     # Section A
     synthesis, citations = build_section_a(explanation, signals)
 
+    # Signal quotes + source breakdown (for all briefs)
+    signal_quotes, source_breakdown = get_top_signal_quotes(signals)
+
     # Section B
     persona, persona_llm_prompt = build_section_b(signals, trend, hypothesis, groq_client)
 
@@ -461,6 +481,17 @@ def generate_opportunity_brief(
         synthesis, persona, hypotheses,
         competition_narrative, validation_experiments, risk_narrative
     )
+
+    # For low-diversity (draft) briefs, prepend an honest context note to synthesis
+    if is_draft and source_breakdown:
+        sources_list = ', '.join(
+            f"{k} ({v})" for k, v in sorted(source_breakdown.items(), key=lambda x: -x[1])
+        )
+        context_note = (
+            f"This conversation is mostly happening on {sources_list} right now. "
+            f"We haven't seen it spread to other platforms yet — which could mean it's still early."
+        )
+        synthesis = context_note + ('\n\n' + synthesis if synthesis else '')
 
     # Auditability
     llm_prompts = {}
@@ -507,6 +538,10 @@ def generate_opportunity_brief(
         # Quality
         'completeness_score': completeness_score,
         'is_draft': is_draft,
+
+        # Signal evidence (Phase 9a)
+        'signal_quotes': json.dumps(signal_quotes),
+        'source_breakdown': json.dumps(source_breakdown),
 
         # Auditability
         'llm_prompts': json.dumps(llm_prompts) if llm_prompts else None,

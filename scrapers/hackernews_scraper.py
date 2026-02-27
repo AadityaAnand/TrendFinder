@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from supabase import create_client, Client
 import time
+from scraper_utils import update_scraper_health
 
 load_dotenv()
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -60,28 +61,34 @@ def save_to_supabase(story):
         print(f"Error saving story to Supabase: {e}")
         return False
 def main():
-    top_story_ids = fetch_top_story_ids()
-    print(f"Found {len(top_story_ids)} stories to process")
-
     saved_count = 0
+    error = None
+    try:
+        top_story_ids = fetch_top_story_ids()
+        print(f"Found {len(top_story_ids)} stories to process")
 
-    for story_id in top_story_ids:
-        story = fetch_story_details(story_id)
+        for story_id in top_story_ids:
+            story = fetch_story_details(story_id)
 
-        if not story:
-            continue
+            if not story:
+                continue
 
-        if 'time' not in story:
-            continue
+            if 'time' not in story:
+                continue
 
-        if not is_recent(story.get("time", 0)):
-            continue
+            if not is_recent(story.get("time", 0)):
+                continue
 
-        if save_to_supabase(story):
-            saved_count += 1
-            print(f"Saved: {story.get('title', 'Untitled')[:60]}...")
+            if save_to_supabase(story):
+                saved_count += 1
+                print(f"Saved: {story.get('title', 'Untitled')[:60]}...")
 
-    print(f"\nScraping complete! Saved {saved_count} stories to Supabase")
+        print(f"\nScraping complete! Saved {saved_count} stories to Supabase")
+    except Exception as e:
+        error = e
+        print(f"Scraper error: {e}")
+    finally:
+        update_scraper_health('hackernews', success=(error is None), signal_count=saved_count, error=error)
 
 if __name__ == "__main__":
     main()
