@@ -13,6 +13,7 @@ from content_classifier import (
     is_narrative_title, is_generic_non_market,
     NARRATIVE_REGEX, GENERIC_NON_MARKET,
 )
+from creator_gates import get_cluster_signal_type
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
@@ -95,7 +96,7 @@ def get_trend_evidence(snapshot_id: str, trend_id: str, limit: int = 8) -> list[
     signal_ids = [s['signal_id'] for s in signals_resp.data][:limit * 2]
 
     details_resp = supabase.table('raw_signals') \
-        .select('id, title, url, source, score') \
+        .select('id, title, url, source, score, source_type') \
         .in_('id', signal_ids) \
         .order('score', desc=True) \
         .limit(limit) \
@@ -369,6 +370,93 @@ Rules:
         return None
 
 
+def generate_creator_hypothesis_llm(
+    trend_name: str,
+    evidence: list[dict],
+    demand_evidence: list[dict],
+) -> Optional[dict]:
+    """
+    Generate a creator-focused content opportunity hypothesis using the LLM.
+    Returns structured creator hypothesis or None on failure.
+    """
+    evidence_lines = []
+    for e in evidence[:8]:
+        source = e.get('source', 'unknown')
+        title = e.get('title', '')[:120]
+        score = e.get('score', 0)
+        evidence_lines.append(f"- [{source}] {title} (engagement: {score})")
+
+    evidence_text = '\n'.join(evidence_lines)
+
+    prompt = f"""You are analyzing content creator platform signals to identify emerging content opportunities.
+
+Trend cluster: "{trend_name}"
+
+Signals from creator platforms (YouTube, Spotify, Twitch, Medium, TikTok, etc.):
+{evidence_text}
+
+Your job: Identify a CONTENT OPPORTUNITY — a format, topic, or series that creators could make right now to tap into this trend.
+
+Respond in this exact JSON format (no markdown, no code blocks, just raw JSON):
+{{
+  "hypothesis_title": "Catchy opportunity title, 5-8 words, e.g. 'Short-form explainer series on AI tools'",
+  "hypothesis_summary": "3-4 sentence plain English description: what content to create, why audiences want it now, what makes it distinctive. Reference the evidence.",
+  "content_type": "one of: video_series|newsletter|podcast|challenge|course|live_stream|thread_series",
+  "platform_focus": ["list of platforms this works best on, e.g. youtube, tiktok, instagram, substack, linkedin, twitch"],
+  "target_audience": "Specific creator niche and audience size, e.g. 'fitness creators with 10-100k followers'",
+  "format_description": "What the content actually looks like — format, length, cadence, tone",
+  "why_now": "Why this is emerging right now based on the signals",
+  "monetization_angle": "How creators could monetize: sponsorships, course, affiliate, merch, etc.",
+  "confidence_assessment": "high|medium|low"
+}}
+
+Rules:
+- hypothesis_title should sound like a real content idea, not a topic label
+- monetization_angle must be realistic and specific
+- platform_focus should only include platforms actually represented in the signals
+- If signals are too generic for a specific opportunity, set confidence_assessment to "low"
+- Keep all text concise"""
+
+    try:
+        response = groq_client.chat.completions.create(
+            messages=[{"role": "user", "content": prompt}],
+            model=MODEL_NAME,
+            temperature=0.4,
+            max_tokens=700,
+        )
+        raw = response.choices[0].message.content.strip()
+
+        if raw.startswith('```'):
+            raw = raw.split('```')[1]
+            if raw.startswith('json'):
+                raw = raw[4:]
+            raw = raw.strip()
+
+        result = json.loads(raw)
+
+        title = str(result.get('hypothesis_title', ''))
+        if not title or len(title) < 10:
+            return None
+
+        return {
+            'hypothesis_title': title[:200],
+            'hypothesis_summary': str(result.get('hypothesis_summary', ''))[:800],
+            'who_it_affects': [str(result.get('target_audience', ''))],
+            'pain_signals': [str(result.get('format_description', '')), str(result.get('why_now', ''))],
+            'confidence_assessment': result.get('confidence_assessment', 'low'),
+            # Creator-specific extras
+            'content_type': result.get('content_type', 'video_series'),
+            'platform_focus': result.get('platform_focus', []),
+            'monetization_angle': result.get('monetization_angle', ''),
+        }
+    except json.JSONDecodeError:
+        logger.warning(f"Failed to parse creator LLM response for {trend_name}")
+        return None
+    except Exception as e:
+        logger.error(f"Creator LLM error for {trend_name}: {e}")
+        return None
+
+
 def save_hypothesis(
     snapshot_id: str,
     trend_id: str,
@@ -377,7 +465,10 @@ def save_hypothesis(
     status: str,
     confidence: float,
     confidence_reasons: list[str],
-    used_llm: bool
+    used_llm: bool,
+    hypothesis_type: str = 'developer',
+    platform_focus: list = None,
+    monetization_angle: str = None,
 ) -> bool:
     data = {
         'snapshot_id': snapshot_id,
@@ -394,6 +485,9 @@ def save_hypothesis(
         'hypothesis_status': status,
         'model_used': MODEL_NAME if used_llm else 'deterministic',
         'prompt_version': PROMPT_VERSION if used_llm else 'deterministic',
+        'hypothesis_type': hypothesis_type,
+        'platform_focus': platform_focus or [],
+        'monetization_angle': monetization_angle,
     }
 
     try:
@@ -445,6 +539,45 @@ def run_hypothesis_generation() -> dict:
             logger.info(f"Skipping {trend_name}: evidence unchanged")
             stats['unchanged'] += 1
             continue
+
+        # --- Creator branch: detect creator-majority clusters and use creator LLM ---
+        signal_type = get_cluster_signal_type(evidence)
+        if signal_type == 'creator':
+            logger.info(f"Creator cluster: {trend_name} — using creator hypothesis")
+            demand_evidence = []
+            for e in evidence:
+                if DEMAND_REGEX.search(e.get('title', '')):
+                    demand_evidence.append({'title': e.get('title', ''), 'source': e.get('source', ''), 'url': e.get('url', '')})
+
+            creator_result = generate_creator_hypothesis_llm(trend_name, evidence, demand_evidence)
+            if creator_result:
+                save_hypothesis(
+                    snapshot_id, trend_id, creator_result, evidence_hash,
+                    'valid', 0.6, ['creator_cluster'],
+                    used_llm=True,
+                    hypothesis_type='creator',
+                    platform_focus=creator_result.get('platform_focus', []),
+                    monetization_angle=creator_result.get('monetization_angle', ''),
+                )
+                stats['valid'] += 1
+            else:
+                # Fallback for creator clusters
+                fallback = {
+                    'hypothesis_title': trend_name,
+                    'hypothesis_summary': _generate_fallback_summary(trend_name, evidence, demand_evidence),
+                    'who_it_affects': [],
+                    'pain_signals': [],
+                    'demand_evidence': demand_evidence,
+                }
+                save_hypothesis(
+                    snapshot_id, trend_id, fallback, evidence_hash,
+                    'uncertain', 0.3, ['creator_cluster', 'llm_failed'],
+                    used_llm=False,
+                    hypothesis_type='creator',
+                )
+                stats['uncertain'] += 1
+            continue
+        # --- End creator branch ---
 
         is_topic_only, topic_reasons = check_topic_only_deterministic(trend_name, evidence)
         if is_topic_only:

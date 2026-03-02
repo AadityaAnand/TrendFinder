@@ -9,12 +9,18 @@ const STATUS_FILTERS = [
   { key: 'topic_only', label: 'Topic only' },
 ]
 
+const AUDIENCE_FILTERS = [
+  { key: 'all', label: 'All' },
+  { key: 'developer', label: 'Developer Tools' },
+  { key: 'creator', label: 'Creator Opportunities' },
+]
 
 interface HypothesisItem {
   trend_id: string
   display_title: string
   hypothesis_summary: string | null
   hypothesis_status: string
+  hypothesis_type: string
   confidence: number
   stage: string | null
   stage_confidence: number
@@ -53,7 +59,7 @@ async function getHypotheses(): Promise<{ items: HypothesisItem[]; snapshotTime:
     db.from('detected_trends').select('id, theme').in('id', trendIds),
     db.from('trend_lifecycle_history').select('trend_id, lifecycle_stage, stage_confidence, acceleration_comparable').eq('snapshot_id', snapshot.id).in('trend_id', trendIds),
     db.from('trend_opportunities').select('trend_id, qualified').eq('snapshot_id', snapshot.id).in('trend_id', trendIds),
-    db.from('problem_hypotheses').select('trend_id, hypothesis_title, hypothesis_summary, hypothesis_status, confidence').eq('snapshot_id', snapshot.id).in('trend_id', trendIds),
+    db.from('problem_hypotheses').select('trend_id, hypothesis_title, hypothesis_summary, hypothesis_status, hypothesis_type, confidence').eq('snapshot_id', snapshot.id).in('trend_id', trendIds),
     db.from('trend_signals').select('trend_id, raw_signals!inner(source)').eq('snapshot_id', snapshot.id).in('trend_id', trendIds),
   ])
 
@@ -92,6 +98,7 @@ async function getHypotheses(): Promise<{ items: HypothesisItem[]; snapshotTime:
       display_title: displayTitle,
       hypothesis_summary: hypothesis?.hypothesis_summary || null,
       hypothesis_status: hypothesis?.hypothesis_status || 'uncertain',
+      hypothesis_type: hypothesis?.hypothesis_type || 'developer',
       confidence: hypothesis?.confidence || 0,
       stage: lifecycle?.lifecycle_stage || null,
       stage_confidence: lifecycle?.stage_confidence || 0,
@@ -111,10 +118,11 @@ async function getHypotheses(): Promise<{ items: HypothesisItem[]; snapshotTime:
 export default async function ExplorePage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; q?: string }>
+  searchParams: Promise<{ status?: string; q?: string; type?: string }>
 }) {
   const params = await searchParams
   const selectedStatus = params.status || 'all'
+  const selectedType = params.type || 'all'
   const query = params.q?.trim().toLowerCase() || ''
   const { items: allItems, snapshotTime, todaySignals } = await getHypotheses()
 
@@ -122,15 +130,21 @@ export default async function ExplorePage({
     ? allItems
     : allItems.filter(i => i.hypothesis_status === selectedStatus)
 
+  if (selectedType !== 'all') {
+    filtered = filtered.filter(i => i.hypothesis_type === selectedType)
+  }
+
   if (query) {
     filtered = filtered.filter(i => i.display_title.toLowerCase().includes(query))
   }
 
-  function buildUrl(p: { status?: string; q?: string }) {
+  function buildUrl(p: { status?: string; q?: string; type?: string }) {
     const parts: string[] = []
     const s = p.status ?? selectedStatus
+    const t = p.type ?? selectedType
     const qr = p.q ?? query
     if (s && s !== 'all') parts.push(`status=${s}`)
+    if (t && t !== 'all') parts.push(`type=${t}`)
     if (qr) parts.push(`q=${encodeURIComponent(qr)}`)
     return parts.length > 0 ? `/explore?${parts.join('&')}` : '/explore'
   }
@@ -166,9 +180,10 @@ export default async function ExplorePage({
             className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 transition focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
           />
           {selectedStatus !== 'all' && <input type="hidden" name="status" value={selectedStatus} />}
+          {selectedType !== 'all' && <input type="hidden" name="type" value={selectedType} />}
         </form>
 
-        <div className="flex items-center gap-1.5 mb-3 overflow-x-auto pb-1">
+        <div className="flex items-center gap-1.5 mb-2 overflow-x-auto pb-1">
           {STATUS_FILTERS.map(f => {
             const isActive = f.key === selectedStatus
             const count = f.key === 'all' ? allItems.length
@@ -192,7 +207,26 @@ export default async function ExplorePage({
           })}
         </div>
 
-        {(query || selectedStatus !== 'all') && (
+        <div className="flex items-center gap-1.5 mb-3 overflow-x-auto pb-1">
+          {AUDIENCE_FILTERS.map(f => {
+            const isActive = f.key === selectedType
+            return (
+              <Link
+                key={f.key}
+                href={buildUrl({ type: f.key })}
+                className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition border ${
+                  isActive
+                    ? 'bg-slate-800 text-white border-slate-800'
+                    : 'bg-white text-slate-600 border border-slate-200 hover:border-slate-300'
+                }`}
+              >
+                {f.label}
+              </Link>
+            )
+          })}
+        </div>
+
+        {(query || selectedStatus !== 'all' || selectedType !== 'all') && (
           <div className="flex items-center gap-2 mb-6 text-xs text-slate-400">
             <span>{filtered.length} result{filtered.length !== 1 ? 's' : ''}</span>
             <Link href="/explore" className="text-indigo-600 hover:text-indigo-700 underline ml-1">Clear</Link>

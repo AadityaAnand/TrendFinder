@@ -353,7 +353,7 @@ export async function GET(request: Request) {
   // Fetch hypotheses for all trends
   const { data: hypotheses } = await supabase
     .from('problem_hypotheses')
-    .select('trend_id, hypothesis_title, hypothesis_summary, hypothesis_status, confidence, pain_signals, who_it_affects, demand_evidence')
+    .select('trend_id, hypothesis_title, hypothesis_summary, hypothesis_status, confidence, pain_signals, who_it_affects, demand_evidence, hypothesis_type, platform_focus, monetization_angle')
     .eq('snapshot_id', snapshot.id)
     .in('trend_id', trendIds)
 
@@ -541,6 +541,9 @@ export async function GET(request: Request) {
           pain_signals: hypothesis.pain_signals,
           who_it_affects: hypothesis.who_it_affects,
           demand_evidence: hypothesis.demand_evidence,
+          hypothesis_type: hypothesis.hypothesis_type || 'developer',
+          platform_focus: hypothesis.platform_focus || [],
+          monetization_angle: hypothesis.monetization_angle || null,
         }
       }
 

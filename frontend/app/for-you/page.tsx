@@ -4,6 +4,7 @@ import { useEffect, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
+import { CreatorOpportunityCard } from '@/app/components/CreatorOpportunityCard'
 
 interface HypothesisData {
   title: string
@@ -13,6 +14,10 @@ interface HypothesisData {
   pain_signals: string[] | string
   who_it_affects: string[] | string
   demand_evidence: { title: string; source: string; url: string }[] | string
+  hypothesis_type?: string
+  platform_focus?: string[]
+  monetization_angle?: string | null
+  pain_points?: { pain: string; evidence: string }[]
 }
 
 interface Opportunity {
@@ -194,6 +199,35 @@ function ForYouContent() {
               {opportunities.map((opp) => {
                 if (dismissedIds.has(opp.id)) return null
                 const h = opp.hypothesis
+                const isCreator = h?.hypothesis_type === 'creator'
+
+                // Creator card branch
+                if (isCreator) {
+                  return (
+                    <CreatorOpportunityCard
+                      key={opp.id}
+                      id={opp.id}
+                      trend_id={opp.trend_id}
+                      display_name={opp.display_name}
+                      qualified={opp.qualified}
+                      hypothesis={h ? {
+                        title: h.title,
+                        summary: h.summary,
+                        status: h.status,
+                        platform_focus: h.platform_focus || [],
+                        monetization_angle: h.monetization_angle || null,
+                        pain_points: h.pain_points || [],
+                      } : null}
+                      engagement_velocity={(opp as Record<string, unknown>).engagement_velocity as number | undefined}
+                      feedbackState={feedbackMap[opp.id] || null}
+                      isExpanded={expandedId === opp.id}
+                      onToggleExpand={() => setExpandedId(expandedId === opp.id ? null : opp.id)}
+                      onSave={() => handleFeedback(opp.id, 'saved')}
+                      onDismiss={() => handleFeedback(opp.id, 'dismissed')}
+                    />
+                  )
+                }
+
                 const painSignals = h ? parseJsonField<string[]>(h.pain_signals, []) : []
                 const whoAffects = h ? parseJsonField<string[]>(h.who_it_affects, []) : []
                 const demandEvidence = h ? parseJsonField<{ title: string; source: string; url: string }[]>(h.demand_evidence, []) : []

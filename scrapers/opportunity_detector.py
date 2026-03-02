@@ -10,6 +10,7 @@ from demand_classifier import (
     classify_demand_layer1,
     DEMAND_REGEX,
 )
+from creator_gates import get_cluster_signal_type, check_creator_gates
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
@@ -219,7 +220,7 @@ def get_supporting_signals(supabase: Client, snapshot_id: str, trend_id: str, li
     signal_ids = [s['signal_id'] for s in signals_resp.data][:limit]
 
     details_resp = supabase.table('raw_signals') \
-        .select('id, title, url, source, score') \
+        .select('id, title, url, source, score, source_type') \
         .in_('id', signal_ids) \
         .order('score', desc=True) \
         .execute()
@@ -481,6 +482,30 @@ def evaluate_trend_as_opportunity(
         return result
 
     signals = get_supporting_signals(supabase, snapshot_id, trend_id, limit=10)
+
+    # Creator-specific qualification path
+    signal_type = get_cluster_signal_type(signals)
+    if signal_type == 'creator':
+        creator_result = check_creator_gates(trend_id, signals, snapshot_id, supabase)
+        qualified = creator_result['qualified']
+        if not qualified:
+            failed_gates = [k for k, v in creator_result['gates'].items() if not v['passed']]
+            result['rejection_reasons'].extend([f'creator_gate_failed:{g}' for g in failed_gates])
+            return result
+        # Creator opportunities always get a simplified opportunity score
+        gates = creator_result['gates']
+        momentum = trend.get('momentum_score', 0) or 0
+        velocity = gates.get('engagement_velocity', {}).get('value', 0)
+        result['qualified'] = True
+        result['opportunity_score'] = round(
+            0.4 * min(momentum / 0.5, 1.0) + 0.4 * min(velocity, 1.0) + 0.2 * 0.5, 4
+        )
+        result['demand_hits'] = gates.get('audience_pain', {}).get('value', 0)
+        result['suggested_actions'] = ['Create content in this format', 'Test across 2 platforms']
+        result['actionability_score'] = 0.7
+        result['signal_quality_score'] = min(momentum / 0.5, 1.0)
+        result['demand_strength'] = min((result['demand_hits'] or 0) / 3.0, 1.0)
+        return result
 
     demand_hits, demand_examples = detect_demand_signals(signals)
     result['demand_hits'] = demand_hits

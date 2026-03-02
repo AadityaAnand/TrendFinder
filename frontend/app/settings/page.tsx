@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
+import { supabase } from '@/lib/supabase'
 
 interface UserPreferences {
   id: string
@@ -24,6 +25,11 @@ interface UserProfile {
   id: string
   external_id: string
   display_name: string | null
+  builder_type?: string | null
+  platforms?: string[] | null
+  niches?: string[] | null
+  audience_size?: string | null
+  monetization_preferences?: string[] | null
   preferences: UserPreferences | null
 }
 
@@ -84,11 +90,76 @@ const RISK_OPTIONS = [
   { value: 'high', label: 'High', description: 'Early mover on emerging trends' },
 ]
 
-const STEPS = [
+const BUILDER_TYPE_OPTIONS = [
+  { value: 'developer', label: 'Developer', description: 'Building software, tools, or apps' },
+  { value: 'creator', label: 'Creator', description: 'Making content, videos, newsletters, or podcasts' },
+  { value: 'both', label: 'Both', description: 'I do both — show me everything relevant' },
+]
+
+const PLATFORM_OPTIONS = [
+  { value: 'youtube', label: 'YouTube' },
+  { value: 'tiktok', label: 'TikTok' },
+  { value: 'instagram', label: 'Instagram' },
+  { value: 'podcast', label: 'Podcast' },
+  { value: 'newsletter', label: 'Newsletter' },
+  { value: 'linkedin', label: 'LinkedIn' },
+  { value: 'twitch', label: 'Twitch' },
+  { value: 'other', label: 'Other' },
+]
+
+const NICHE_OPTIONS = [
+  { value: 'gaming', label: 'Gaming' },
+  { value: 'beauty', label: 'Beauty' },
+  { value: 'fitness', label: 'Fitness' },
+  { value: 'education', label: 'Education' },
+  { value: 'finance', label: 'Finance' },
+  { value: 'lifestyle', label: 'Lifestyle' },
+  { value: 'tech', label: 'Tech' },
+  { value: 'cooking', label: 'Cooking' },
+  { value: 'travel', label: 'Travel' },
+  { value: 'business', label: 'Business' },
+  { value: 'music', label: 'Music' },
+  { value: 'comedy', label: 'Comedy' },
+]
+
+const AUDIENCE_SIZE_OPTIONS = [
+  { value: 'nano', label: 'Nano', description: 'Under 10k followers' },
+  { value: 'micro', label: 'Micro', description: '10k – 100k followers' },
+  { value: 'mid', label: 'Mid', description: '100k – 500k followers' },
+  { value: 'macro', label: 'Macro', description: '500k+ followers' },
+]
+
+const MONETIZATION_OPTIONS = [
+  { value: 'sponsorships', label: 'Sponsorships' },
+  { value: 'courses', label: 'Courses' },
+  { value: 'affiliate', label: 'Affiliate' },
+  { value: 'merchandise', label: 'Merchandise' },
+  { value: 'subscriptions', label: 'Subscriptions' },
+  { value: 'ads', label: 'Ad revenue' },
+  { value: 'products', label: 'Digital products' },
+]
+
+const DEV_STEPS = [
+  { key: 'builder_type', title: 'What kind of builder are you?', subtitle: 'This helps us show you the right opportunities' },
   { key: 'goal', title: 'What brings you to Rishi?', subtitle: 'Choose what best describes your goal' },
   { key: 'experience', title: 'How experienced are you?', subtitle: 'With your goal area' },
   { key: 'interests', title: 'What interests you?', subtitle: 'Pick domains and tech you care about' },
   { key: 'constraints', title: 'Your constraints', subtitle: 'Timeline, team, and risk appetite' },
+]
+
+const CREATOR_STEPS = [
+  { key: 'builder_type', title: 'What kind of builder are you?', subtitle: 'This helps us show you the right opportunities' },
+  { key: 'creator_info', title: 'Tell us about your content', subtitle: 'Platform, niche, and how you monetize' },
+  { key: 'constraints', title: 'Your constraints', subtitle: 'Timeline and risk appetite' },
+]
+
+const BOTH_STEPS = [
+  { key: 'builder_type', title: 'What kind of builder are you?', subtitle: 'This helps us show you the right opportunities' },
+  { key: 'goal', title: 'What brings you to Rishi?', subtitle: 'Choose what best describes your goal' },
+  { key: 'experience', title: 'How experienced are you?', subtitle: 'With your goal area' },
+  { key: 'interests', title: 'What interests you?', subtitle: 'Pick domains and tech you care about' },
+  { key: 'creator_info', title: 'Tell us about your content', subtitle: 'Platform, niche, and how you monetize' },
+  { key: 'constraints', title: 'Your constraints', subtitle: 'Timeline and risk appetite' },
 ]
 
 function ChipSelect({
@@ -164,6 +235,7 @@ export default function SettingsPage() {
   const [step, setStep] = useState(0)
   const [isOnboarding, setIsOnboarding] = useState(false)
 
+  // Developer preferences
   const [goal, setGoal] = useState('')
   const [experienceLevel, setExperienceLevel] = useState('')
   const [domains, setDomains] = useState<string[]>([])
@@ -172,6 +244,13 @@ export default function SettingsPage() {
   const [timeHorizon, setTimeHorizon] = useState('flexible')
   const [teamSize, setTeamSize] = useState('solo')
   const [riskTolerance, setRiskTolerance] = useState('medium')
+
+  // Creator preferences
+  const [builderType, setBuilderType] = useState<string>('developer')
+  const [platforms, setPlatforms] = useState<string[]>([])
+  const [niches, setNiches] = useState<string[]>([])
+  const [audienceSize, setAudienceSize] = useState<string>('')
+  const [monetizationPrefs, setMonetizationPrefs] = useState<string[]>([])
 
   useEffect(() => {
     if (!ready) return
@@ -196,7 +275,7 @@ export default function SettingsPage() {
       if (res.ok) {
         const data = await res.json()
         setProfile(data)
-        initFormFromPreferences(data.preferences)
+        initFormFromProfile(data)
         if (data.preferences?.updated_at) {
           setLastSavedAt(data.preferences.updated_at)
         }
@@ -210,7 +289,8 @@ export default function SettingsPage() {
     }
   }
 
-  const initFormFromPreferences = (prefs: UserPreferences | null) => {
+  const initFormFromProfile = (profileData: UserProfile) => {
+    const prefs = profileData.preferences
     if (prefs) {
       setGoal(prefs.goal || '')
       setExperienceLevel(prefs.experience_level || '')
@@ -221,6 +301,18 @@ export default function SettingsPage() {
       setRiskTolerance(prefs.risk_tolerance || 'medium')
       setAvoidTopics((prefs.avoid_topics || []).join(', '))
     }
+    // Creator fields from user_profiles
+    setBuilderType(profileData.builder_type || 'developer')
+    setPlatforms(profileData.platforms || [])
+    setNiches(profileData.niches || [])
+    setAudienceSize(profileData.audience_size || '')
+    setMonetizationPrefs(profileData.monetization_preferences || [])
+  }
+
+  const getActiveSteps = () => {
+    if (builderType === 'creator') return CREATOR_STEPS
+    if (builderType === 'both') return BOTH_STEPS
+    return DEV_STEPS
   }
 
   const handleSave = async () => {
@@ -230,6 +322,7 @@ export default function SettingsPage() {
       setError(null)
       setSaved(false)
 
+      // Save developer preferences
       const res = await fetch('/api/profile/preferences', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -251,12 +344,24 @@ export default function SettingsPage() {
         throw new Error(errData.error || 'Failed to save preferences')
       }
 
+      // Save creator fields to user_profiles
+      await supabase
+        .from('user_profiles')
+        .update({
+          builder_type: builderType,
+          platforms: platforms.length > 0 ? platforms : null,
+          niches: niches.length > 0 ? niches : null,
+          audience_size: audienceSize || null,
+          monetization_preferences: monetizationPrefs.length > 0 ? monetizationPrefs : null,
+        })
+        .eq('id', profile.id)
+
       markPrefsComplete()
       setSaved(true)
       setLastSavedAt(new Date().toISOString())
 
       if (isOnboarding) {
-        setStep(4) // show welcome screen
+        setStep(getActiveSteps().length) // show welcome screen
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save. Please try again.')
@@ -266,7 +371,8 @@ export default function SettingsPage() {
   }
 
   const handleNext = () => {
-    if (step < STEPS.length - 1) {
+    const steps = getActiveSteps()
+    if (step < steps.length - 1) {
       setStep(step + 1)
     } else {
       handleSave()
@@ -286,7 +392,7 @@ export default function SettingsPage() {
   }
 
   // Welcome screen (onboarding only, shown after successful save)
-  if (step === 4 && isOnboarding) {
+  if (step === getActiveSteps().length && isOnboarding) {
     return (
       <div className="min-h-screen bg-white">
         <div className="max-w-xl mx-auto px-6 py-16 text-center">
@@ -315,66 +421,107 @@ export default function SettingsPage() {
     )
   }
 
-  const stepContent = [
-    // Step 1: Goal
-    <div key="goal" className="space-y-6">
-      <div>
-        <label className="block text-sm font-medium text-slate-500 mb-3">Select your primary goal</label>
-        <ChipSelect options={GOAL_OPTIONS} selected={goal} onChange={(v) => setGoal(v as string)} multi={false} />
-      </div>
-    </div>,
-
-    // Step 2: Experience
-    <div key="experience" className="space-y-6">
-      <div>
-        <label className="block text-sm font-medium text-slate-500 mb-3">
-          {goal
-            ? `Your experience with ${GOAL_OPTIONS.find(g => g.value === goal)?.label ?? 'your goal'}`
-            : 'Your experience level'}
-        </label>
-        <ChipSelect options={EXPERIENCE_OPTIONS} selected={experienceLevel} onChange={(v) => setExperienceLevel(v as string)} multi={false} />
-      </div>
-    </div>,
-
-    // Step 3: Interests
-    <div key="interests" className="space-y-6">
-      <div>
-        <label className="block text-sm font-medium text-slate-500 mb-3">Areas that interest you</label>
-        <ChipSelect options={DOMAIN_OPTIONS} selected={domains} onChange={(v) => setDomains(v as string[])} />
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-slate-500 mb-3">Tech stack you work with</label>
-        <ChipSelect options={STACK_OPTIONS} selected={techStack} onChange={(v) => setTechStack(v as string[])} />
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-slate-500 mb-2">Topics to avoid</label>
-        <input
-          type="text"
-          value={avoidTopics}
-          onChange={(e) => setAvoidTopics(e.target.value)}
-          placeholder="e.g., crypto, blockchain"
-          className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
-        />
-        <p className="text-xs text-slate-400 mt-1.5">Comma-separated. These topics will be ranked lower, not hidden.</p>
-      </div>
-    </div>,
-
-    // Step 4: Constraints
-    <div key="constraints" className="space-y-6">
-      <div>
-        <label className="block text-sm font-medium text-slate-500 mb-3">Time horizon</label>
-        <ChipSelect options={TIME_HORIZON_OPTIONS} selected={timeHorizon} onChange={(v) => setTimeHorizon(v as string)} multi={false} />
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-slate-500 mb-3">Team size</label>
-        <ChipSelect options={TEAM_SIZE_OPTIONS} selected={teamSize} onChange={(v) => setTeamSize(v as string)} multi={false} />
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-slate-500 mb-3">Risk tolerance</label>
-        <ChipSelect options={RISK_OPTIONS} selected={riskTolerance} onChange={(v) => setRiskTolerance(v as string)} multi={false} />
-      </div>
-    </div>,
-  ]
+  const getStepContent = (stepKey: string) => {
+    switch (stepKey) {
+      case 'builder_type':
+        return (
+          <div key="builder_type" className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium text-slate-500 mb-3">Choose the option that best fits you</label>
+              <ChipSelect options={BUILDER_TYPE_OPTIONS} selected={builderType} onChange={(v) => setBuilderType(v as string)} multi={false} />
+            </div>
+          </div>
+        )
+      case 'goal':
+        return (
+          <div key="goal" className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium text-slate-500 mb-3">Select your primary goal</label>
+              <ChipSelect options={GOAL_OPTIONS} selected={goal} onChange={(v) => setGoal(v as string)} multi={false} />
+            </div>
+          </div>
+        )
+      case 'experience':
+        return (
+          <div key="experience" className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium text-slate-500 mb-3">
+                {goal
+                  ? `Your experience with ${GOAL_OPTIONS.find(g => g.value === goal)?.label ?? 'your goal'}`
+                  : 'Your experience level'}
+              </label>
+              <ChipSelect options={EXPERIENCE_OPTIONS} selected={experienceLevel} onChange={(v) => setExperienceLevel(v as string)} multi={false} />
+            </div>
+          </div>
+        )
+      case 'interests':
+        return (
+          <div key="interests" className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium text-slate-500 mb-3">Areas that interest you</label>
+              <ChipSelect options={DOMAIN_OPTIONS} selected={domains} onChange={(v) => setDomains(v as string[])} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-500 mb-3">Tech stack you work with</label>
+              <ChipSelect options={STACK_OPTIONS} selected={techStack} onChange={(v) => setTechStack(v as string[])} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-500 mb-2">Topics to avoid</label>
+              <input
+                type="text"
+                value={avoidTopics}
+                onChange={(e) => setAvoidTopics(e.target.value)}
+                placeholder="e.g., crypto, blockchain"
+                className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+              />
+              <p className="text-xs text-slate-400 mt-1.5">Comma-separated. These topics will be ranked lower, not hidden.</p>
+            </div>
+          </div>
+        )
+      case 'creator_info':
+        return (
+          <div key="creator_info" className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium text-slate-500 mb-3">Platforms you create on</label>
+              <ChipSelect options={PLATFORM_OPTIONS} selected={platforms} onChange={(v) => setPlatforms(v as string[])} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-500 mb-3">Your niche(s)</label>
+              <ChipSelect options={NICHE_OPTIONS} selected={niches} onChange={(v) => setNiches(v as string[])} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-500 mb-3">Audience size</label>
+              <ChipSelect options={AUDIENCE_SIZE_OPTIONS} selected={audienceSize} onChange={(v) => setAudienceSize(v as string)} multi={false} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-500 mb-3">How you monetize (or want to)</label>
+              <ChipSelect options={MONETIZATION_OPTIONS} selected={monetizationPrefs} onChange={(v) => setMonetizationPrefs(v as string[])} />
+            </div>
+          </div>
+        )
+      case 'constraints':
+        return (
+          <div key="constraints" className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium text-slate-500 mb-3">Time horizon</label>
+              <ChipSelect options={TIME_HORIZON_OPTIONS} selected={timeHorizon} onChange={(v) => setTimeHorizon(v as string)} multi={false} />
+            </div>
+            {builderType !== 'creator' && (
+              <div>
+                <label className="block text-sm font-medium text-slate-500 mb-3">Team size</label>
+                <ChipSelect options={TEAM_SIZE_OPTIONS} selected={teamSize} onChange={(v) => setTeamSize(v as string)} multi={false} />
+              </div>
+            )}
+            <div>
+              <label className="block text-sm font-medium text-slate-500 mb-3">Risk tolerance</label>
+              <ChipSelect options={RISK_OPTIONS} selected={riskTolerance} onChange={(v) => setRiskTolerance(v as string)} multi={false} />
+            </div>
+          </div>
+        )
+      default:
+        return null
+    }
+  }
 
   return (
     <div className="min-h-screen bg-white">
@@ -395,7 +542,7 @@ export default function SettingsPage() {
 
         {/* Step progress indicator */}
         <div className="flex items-center gap-2 mb-8">
-          {STEPS.map((s, i) => (
+          {getActiveSteps().map((s, i) => (
             <div key={s.key} className="flex items-center gap-2 grow">
               <button
                 onClick={() => setStep(i)}
@@ -420,7 +567,7 @@ export default function SettingsPage() {
                 </span>
                 <span className="hidden sm:inline">{s.title}</span>
               </button>
-              {i < STEPS.length - 1 && (
+              {i < getActiveSteps().length - 1 && (
                 <div className={`grow h-px ${i < step ? 'bg-indigo-200' : 'bg-slate-200'}`} />
               )}
             </div>
@@ -428,8 +575,8 @@ export default function SettingsPage() {
         </div>
 
         <div className="mb-6">
-          <h2 className="text-lg font-semibold text-slate-900">{STEPS[step].title}</h2>
-          <p className="text-sm text-slate-500 mt-0.5">{STEPS[step].subtitle}</p>
+          <h2 className="text-lg font-semibold text-slate-900">{getActiveSteps()[step]?.title}</h2>
+          <p className="text-sm text-slate-500 mt-0.5">{getActiveSteps()[step]?.subtitle}</p>
         </div>
 
         {error && (
@@ -444,7 +591,7 @@ export default function SettingsPage() {
           </div>
         )}
 
-        {stepContent[step]}
+        {getStepContent(getActiveSteps()[step]?.key ?? '')}
 
         <div className="flex items-center justify-between mt-10 pt-6 border-t border-slate-200">
           <div>
@@ -466,7 +613,7 @@ export default function SettingsPage() {
                 : 'bg-indigo-600 text-white hover:bg-indigo-700'
             }`}
           >
-            {step < STEPS.length - 1
+            {step < getActiveSteps().length - 1
               ? 'Continue'
               : saving
               ? 'Saving...'

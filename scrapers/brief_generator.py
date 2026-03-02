@@ -20,6 +20,8 @@ from groq import Groq
 
 from persona_extractor import extract_persona
 from validation_playbook import select_playbooks
+from creator_gates import get_cluster_signal_type
+from creator_persona_extractor import extract_creator_persona
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
@@ -144,7 +146,7 @@ def get_top_signals(supabase: Client, snapshot_id: str, trend_id: str, limit: in
     signal_ids = [s['signal_id'] for s in sig_resp.data][:limit * 2]
 
     details_resp = supabase.table('raw_signals') \
-        .select('id, title, url, source, score') \
+        .select('id, title, url, source, score, source_type') \
         .in_('id', signal_ids) \
         .order('score', desc=True) \
         .limit(limit) \
@@ -415,6 +417,140 @@ def compute_completeness(
 
 
 # ============================================================
+# CREATOR BRIEF SECTION BUILDERS
+# ============================================================
+
+def _build_creator_synthesis(hypothesis: dict, signals: list[dict], groq_client) -> str:
+    """Generate creator-appropriate Section A synthesis using LLM."""
+    if not groq_client:
+        summary = hypothesis.get('hypothesis_summary', '')
+        return summary or 'Emerging content trend detected across creator platforms.'
+
+    title = hypothesis.get('hypothesis_title', '')
+    summary = hypothesis.get('hypothesis_summary', '')
+    signal_titles = [s.get('title', '') for s in signals[:6] if s.get('title')]
+    sources = list({s.get('source', '') for s in signals})
+
+    prompt = f"""You are summarizing an emerging content creator opportunity.
+
+Opportunity: {title}
+Summary from analysis: {summary}
+
+Supporting signals from {', '.join(sources)}:
+{chr(10).join(f'- {t}' for t in signal_titles)}
+
+Write a 3-4 sentence plain English description of what content trend is emerging, why it matters to creators right now, and what makes this a good moment to act. Be specific, not generic. Do not use hype words. Return only the text, no labels or markdown."""
+
+    try:
+        response = groq_client.chat.completions.create(
+            messages=[{'role': 'user', 'content': prompt}],
+            model=MODEL_NAME,
+            temperature=0.4,
+            max_tokens=300,
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        logger.warning(f'Creator synthesis LLM failed: {e}')
+        return summary or title
+
+
+def _build_creator_content_ideas(hypothesis: dict) -> list[dict]:
+    """Section C for creator briefs — extract format ideas from creator hypothesis."""
+    ideas = []
+
+    content_type = hypothesis.get('content_type', '')
+    title = hypothesis.get('hypothesis_title', '')
+    format_desc = ''
+    pain_signals = _parse_json_field(hypothesis.get('pain_signals'), [])
+
+    # pain_signals[0] = format_description, pain_signals[1] = why_now from creator LLM
+    if len(pain_signals) > 0:
+        format_desc = str(pain_signals[0])
+    why_now = str(pain_signals[1]) if len(pain_signals) > 1 else ''
+
+    if title:
+        ideas.append({
+            'idea': title,
+            'effort': 'medium',
+            'audience': str(hypothesis.get('who_it_affects', ['creators'])[0]) if hypothesis.get('who_it_affects') else 'content creators',
+        })
+
+    if format_desc and format_desc != title:
+        ideas.append({
+            'idea': format_desc[:200],
+            'effort': 'low',
+            'audience': 'Your existing audience',
+        })
+
+    if why_now:
+        ideas.append({
+            'idea': f'Act on timing: {why_now[:180]}',
+            'effort': 'low',
+            'audience': 'Early movers in your niche',
+        })
+
+    return ideas[:5] if ideas else [{'idea': 'Explore this content format', 'effort': 'medium', 'audience': 'Content creators'}]
+
+
+_CREATOR_VALIDATION_STEPS = [
+    {
+        'title': 'Post 3 pieces in this format',
+        'description': 'Create 3 pieces using this format and track engagement vs your last 10 posts. Use consistent posting times.',
+        'success_criteria': 'At least 2 of 3 pieces outperform your average engagement by 20%+',
+        'effort': 'low',
+    },
+    {
+        'title': 'Read the comments on top posts',
+        'description': 'Find the 5 most-engaged posts in this format and read all comments. List the top 5 questions asked.',
+        'success_criteria': 'At least 10 distinct questions that you could answer in follow-up content',
+        'effort': 'low',
+    },
+    {
+        'title': 'Test across 2 platforms',
+        'description': 'Repurpose the same content idea across 2 platforms to see where it gets traction. Same concept, native format per platform.',
+        'success_criteria': 'One platform shows 2x+ higher engagement than the other — double down there',
+        'effort': 'medium',
+    },
+    {
+        'title': 'DM 5 creators in this niche',
+        'description': 'Message 5 creators making similar content. Ask: what made this format work for them? What did they test and discard?',
+        'success_criteria': 'At least 2 responses with concrete insights you can apply',
+        'effort': 'low',
+    },
+]
+
+
+def _build_creator_risks(competition: dict, hypothesis: dict) -> tuple[str, list[dict]]:
+    """Section F for creator briefs — platform and trend-fade risks."""
+    platform_focus = hypothesis.get('platform_focus', [])
+    level = competition.get('competition_level', 'uncertain')
+
+    parts = []
+    if level == 'high':
+        parts.append('This format space is getting crowded. Early movers have an advantage — timing matters.')
+    elif level == 'moderate':
+        parts.append('Some competition exists. A unique angle or niche will help you stand out.')
+    else:
+        parts.append('Low competition detected, but that can change quickly as trends spread.')
+
+    if 'tiktok' in platform_focus or 'instagram' in platform_focus:
+        parts.append('Short-form platform trends can fade in weeks. Monitor engagement closely after 2-3 weeks.')
+
+    parts.append('Algorithm changes on any platform can reduce reach unexpectedly. Diversify across 2+ platforms.')
+    parts.append('Not all trending formats monetize well. Validate audience intent before investing heavily.')
+
+    risk_narrative = ' '.join(parts)
+
+    risk_factors = [
+        {'label': 'Trend may fade quickly', 'severity': 'medium', 'description': 'Creator trends move fast. Monitor weekly.'},
+        {'label': 'Platform algorithm risk', 'severity': 'medium', 'description': 'Reach can drop without warning on any platform.'},
+        {'label': 'Saturation risk', 'severity': 'low' if level != 'high' else 'high', 'description': 'More creators enter the space as trends are spotted.'},
+    ]
+
+    return risk_narrative, risk_factors
+
+
+# ============================================================
 # MAIN BRIEF GENERATION
 # ============================================================
 
@@ -452,6 +588,14 @@ def generate_opportunity_brief(
     if existing and existing.get('evidence_hash') == evidence_hash:
         logger.info(f'Brief unchanged for trend {trend_id}, skipping')
         return None
+
+    # Detect signal type and branch to creator-specific brief generation
+    signal_type = get_cluster_signal_type(signals)
+    if signal_type == 'creator':
+        return _generate_creator_brief(
+            supabase, snapshot_id, opportunity_id, trend_id,
+            trend, hypothesis, competition, metrics, signals, evidence_hash, groq_client,
+        )
 
     # Section A
     synthesis, citations = build_section_a(explanation, signals)
@@ -545,6 +689,132 @@ def generate_opportunity_brief(
 
         # Auditability
         'llm_prompts': json.dumps(llm_prompts) if llm_prompts else None,
+        'evidence_hash': evidence_hash,
+        'model_used': MODEL_NAME,
+    }
+
+
+def _generate_creator_brief(
+    supabase: Client,
+    snapshot_id: str,
+    opportunity_id: str,
+    trend_id: str,
+    trend: dict,
+    hypothesis: dict,
+    competition: dict,
+    metrics: dict,
+    signals: list[dict],
+    evidence_hash: str,
+    groq_client,
+) -> Optional[dict]:
+    """
+    Generate a creator-specific 6-section brief.
+    Uses creator hypothesis fields + creator persona extractor.
+    """
+    signal_quotes, source_breakdown = get_top_signal_quotes(signals)
+
+    # Section A: Creator-focused synthesis
+    synthesis = _build_creator_synthesis(hypothesis, signals, groq_client)
+
+    # Citations from top signals
+    citations = [
+        {'title': s['title'][:150], 'url': s.get('url', ''), 'source': s.get('source', '')}
+        for s in signals[:3] if s.get('title')
+    ]
+
+    # Section B: Creator persona
+    creator_persona = extract_creator_persona(
+        signals=signals,
+        trend_name=trend.get('theme') or hypothesis.get('hypothesis_title', ''),
+        trend_id=trend_id,
+        snapshot_id=snapshot_id,
+        supabase=supabase,
+        groq_client=groq_client,
+    )
+    # Map to existing brief persona schema for frontend compatibility
+    persona = {
+        'roles': creator_persona.get('niches', []) or ['content creator'],
+        'level': creator_persona.get('audience_size', 'micro'),
+        'domain': creator_persona.get('primary_platform', 'other'),
+        'pain_points': creator_persona.get('pain_points', []),
+        'confidence': 0.6,
+    }
+
+    # Section C: Content ideas from creator hypothesis
+    hypotheses = _build_creator_content_ideas(hypothesis)
+
+    # Section D: Competition (same as developer path)
+    (competition_narrative, startups, repos, tools, funding, entity_conf) = build_section_d(competition)
+
+    # Section E: Creator validation steps
+    validation_experiments = _CREATOR_VALIDATION_STEPS[:3]
+
+    # Section F: Creator-specific risks
+    risk_narrative, risk_factors = _build_creator_risks(competition, hypothesis)
+
+    completeness_score, is_draft = compute_completeness(
+        synthesis, persona, hypotheses,
+        competition_narrative, validation_experiments, risk_narrative,
+    )
+
+    # Prepend source context note for draft briefs
+    if is_draft and source_breakdown:
+        sources_list = ', '.join(
+            f"{k} ({v})" for k, v in sorted(source_breakdown.items(), key=lambda x: -x[1])
+        )
+        context_note = (
+            f"This creator trend is mainly showing up on {sources_list} right now. "
+            f"It hasn't spread widely across platforms yet — which could mean early mover advantage."
+        )
+        synthesis = context_note + ('\n\n' + synthesis if synthesis else '')
+
+    return {
+        'opportunity_id': opportunity_id,
+        'snapshot_id': snapshot_id,
+        'trend_id': trend_id,
+        'brief_version': BRIEF_VERSION,
+
+        # Section A
+        'synthesis': synthesis,
+        'synthesis_citations': json.dumps(citations),
+
+        # Section B (creator persona mapped to existing schema)
+        'persona_roles': persona.get('roles', []),
+        'persona_level': persona.get('level', 'micro'),
+        'persona_domain': persona.get('domain', 'other'),
+        'persona_pain_points': json.dumps(persona.get('pain_points', [])),
+        'persona_confidence': persona.get('confidence', 0.5),
+
+        # Section C
+        'hypotheses': json.dumps(hypotheses),
+
+        # Section D
+        'competition_narrative': competition_narrative,
+        'competition_startups': json.dumps(startups),
+        'competition_repos': json.dumps(repos),
+        'competition_tools': json.dumps(tools),
+        'competition_funding': json.dumps(funding),
+        'competition_confidence': entity_conf,
+
+        # Section E
+        'validation_experiments': json.dumps(validation_experiments),
+
+        # Section F
+        'risk_narrative': risk_narrative,
+        'risk_factors': json.dumps(risk_factors),
+        'stability_label': metrics.get('volatility_label') or '',
+        'negative_signal_ratio': metrics.get('negative_signal_ratio'),
+
+        # Quality
+        'completeness_score': completeness_score,
+        'is_draft': is_draft,
+
+        # Signal evidence
+        'signal_quotes': json.dumps(signal_quotes),
+        'source_breakdown': json.dumps(source_breakdown),
+
+        # Auditability
+        'llm_prompts': None,
         'evidence_hash': evidence_hash,
         'model_used': MODEL_NAME,
     }
