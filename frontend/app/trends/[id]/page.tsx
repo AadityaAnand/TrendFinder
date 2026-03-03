@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation'
 import { SourceBadge } from '../../components/SourceBadge'
 import { SignalQuote } from '../../components/SignalQuote'
 import { RiskIndicator } from '../../components/RiskIndicator'
+import { ChatPanel } from '../../components/ChatPanel'
 
 interface TrajectoryPoint {
   snapshot_id: string
@@ -902,6 +903,7 @@ export default async function TrendDetailPage({
           </details>
         </div>
       </div>
+      <ChatPanel trendId={id} trendName={trend.theme} />
     </div>
   )
 }
