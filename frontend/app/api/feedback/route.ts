@@ -1,16 +1,18 @@
 import { getServerSupabase } from '@/lib/supabase-server'
 import { NextResponse } from 'next/server'
 
-const VALID_FEEDBACK_TYPES = ['saved', 'dismissed', 'acted', 'not_relevant'] as const
+const VALID_FEEDBACK_TYPES = ['saved', 'dismissed', 'acted', 'not_relevant', 'brief_helpful', 'brief_not_helpful'] as const
 type FeedbackType = typeof VALID_FEEDBACK_TYPES[number]
+const BRIEF_FEEDBACK_TYPES = ['brief_helpful', 'brief_not_helpful']
 
 export async function POST(request: Request) {
   const supabase = getServerSupabase()
   const body = await request.json()
   const { user_id, opportunity_id, snapshot_id, feedback_type, note } = body
 
-  // Validate required fields
-  if (!user_id || !opportunity_id || !snapshot_id || !feedback_type) {
+  // Validate required fields (snapshot_id is optional for brief feedback)
+  const isBriefFeedback = BRIEF_FEEDBACK_TYPES.includes(feedback_type)
+  if (!user_id || !opportunity_id || (!isBriefFeedback && !snapshot_id) || !feedback_type) {
     return NextResponse.json(
       { error: 'user_id, opportunity_id, snapshot_id, and feedback_type are required' },
       { status: 400 }
@@ -46,7 +48,7 @@ export async function POST(request: Request) {
       {
         user_id,
         opportunity_id,
-        snapshot_id,
+        snapshot_id: snapshot_id || null,
         feedback_type,
         note: note || null,
         created_at: new Date().toISOString()

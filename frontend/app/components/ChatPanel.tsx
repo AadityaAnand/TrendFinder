@@ -34,6 +34,13 @@ interface ChatPanelProps {
   trendName: string
 }
 
+const SUGGESTED_QUESTIONS = [
+  "What are the top signals?",
+  "Who is this opportunity for?",
+  "What should I build?",
+  "How do I validate this?",
+]
+
 export function ChatPanel({ trendId, trendName }: ChatPanelProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -49,6 +56,7 @@ export function ChatPanel({ trendId, trendName }: ChatPanelProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
+  const abortRef = useRef<AbortController | null>(null)
 
   // Auth: get user
   useEffect(() => {
@@ -164,13 +172,19 @@ export function ChatPanel({ trendId, trendName }: ChatPanelProps) {
     await loadMessages(sid)
   }
 
-  const handleSend = async () => {
-    const text = input.trim()
+  const handleStop = () => {
+    abortRef.current?.abort()
+    setIsLoading(false)
+    setStreamingContent('')
+  }
+
+  const handleSend = async (overrideText?: string) => {
+    const text = (overrideText ?? input).trim()
     if (!text || isLoading || !sessionId || !userId) return
 
-    setInput('')
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto'
+    if (!overrideText) {
+      setInput('')
+      if (textareaRef.current) textareaRef.current.style.height = 'auto'
     }
     setError(null)
 
@@ -179,6 +193,8 @@ export function ChatPanel({ trendId, trendName }: ChatPanelProps) {
     setMessages(prev => [...prev, { id: tempId, role: 'user', content: text }])
     setIsLoading(true)
     setStreamingContent('')
+
+    abortRef.current = new AbortController()
 
     try {
       const res = await fetch('/api/chat/completion', {
@@ -190,6 +206,7 @@ export function ChatPanel({ trendId, trendName }: ChatPanelProps) {
           trend_id: trendId,
           message: text,
         }),
+        signal: abortRef.current.signal,
       })
 
       if (!res.ok) {
@@ -248,11 +265,36 @@ export function ChatPanel({ trendId, trendName }: ChatPanelProps) {
       // Refresh session list for updated preview
       loadSessions(userId)
     } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        // User stopped generation — not an error
+        return
+      }
       setError(err instanceof Error ? err.message : 'Something went wrong')
       setStreamingContent('')
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const handleSuggestedQuestion = (q: string) => {
+    setInput(q)
+    handleSend(q)
+  }
+
+  const handleExport = () => {
+    const lines: string[] = []
+    for (const m of messages) {
+      lines.push(m.role === 'user' ? '[You]:' : '[Rishi]:')
+      lines.push(m.content)
+      lines.push('')
+    }
+    const blob = new Blob([lines.join('\n')], { type: 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `rishi-chat-${trendId.slice(0, 8)}.txt`
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   const handleFeedback = async (
@@ -329,6 +371,18 @@ export function ChatPanel({ trendId, trendName }: ChatPanelProps) {
                 </div>
               </div>
               <div className="flex items-center gap-1">
+                {messages.length > 0 && (
+                  <button
+                    onClick={handleExport}
+                    title="Export conversation"
+                    className="text-slate-400 hover:text-slate-600 p-1 rounded transition-colors"
+                    aria-label="Export conversation"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                  </button>
+                )}
                 <button
                   onClick={() => setShowSessionList(v => !v)}
                   title="Chat history"
@@ -376,16 +430,27 @@ export function ChatPanel({ trendId, trendName }: ChatPanelProps) {
             {/* Messages area */}
             <div className="flex-1 overflow-y-auto px-4 py-3">
               {messages.length === 0 && !streamingContent && !isLoading && (
-                <div className="text-center mt-12 px-4">
-                  <div className="w-12 h-12 rounded-full bg-indigo-50 flex items-center justify-center mx-auto mb-3">
-                    <svg className="w-6 h-6 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                    </svg>
+                <div className="mt-10 px-2">
+                  <div className="text-center mb-5">
+                    <div className="w-12 h-12 rounded-full bg-indigo-50 flex items-center justify-center mx-auto mb-3">
+                      <svg className="w-6 h-6 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                      </svg>
+                    </div>
+                    <p className="text-sm font-medium text-slate-700">Ask about this opportunity</p>
                   </div>
-                  <p className="text-sm font-medium text-slate-700 mb-1">Ask about this opportunity</p>
-                  <p className="text-xs text-slate-400 leading-relaxed">
-                    Try: &ldquo;What are the top signals?&rdquo; or &ldquo;What should I build?&rdquo;
-                  </p>
+                  <div className="flex flex-wrap gap-2 justify-center">
+                    {SUGGESTED_QUESTIONS.map(q => (
+                      <button
+                        key={q}
+                        onClick={() => handleSuggestedQuestion(q)}
+                        disabled={!userId || !sessionId}
+                        className="text-xs bg-slate-50 border border-slate-200 text-slate-600 px-3 py-1.5 rounded-full hover:bg-indigo-50 hover:border-indigo-200 hover:text-indigo-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        {q}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
 
@@ -440,6 +505,19 @@ export function ChatPanel({ trendId, trendName }: ChatPanelProps) {
               {!userId && (
                 <p className="text-xs text-slate-400 text-center mb-2">Sign in to chat</p>
               )}
+              {isLoading && streamingContent && (
+                <div className="flex justify-center mb-2">
+                  <button
+                    onClick={handleStop}
+                    className="text-xs text-slate-500 border border-slate-200 bg-white hover:bg-slate-50 px-3 py-1 rounded-full transition-colors flex items-center gap-1.5"
+                  >
+                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                      <rect x="6" y="6" width="12" height="12" rx="1" />
+                    </svg>
+                    Stop generating
+                  </button>
+                </div>
+              )}
               <div className="flex gap-2 items-end">
                 <textarea
                   ref={textareaRef}
@@ -453,7 +531,7 @@ export function ChatPanel({ trendId, trendName }: ChatPanelProps) {
                   style={{ minHeight: '40px', maxHeight: '120px' }}
                 />
                 <button
-                  onClick={handleSend}
+                  onClick={() => handleSend()}
                   disabled={!userId || isLoading || !input.trim()}
                   className="shrink-0 w-9 h-9 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 text-white rounded-xl flex items-center justify-center transition-colors"
                   aria-label="Send"

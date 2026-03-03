@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, ReactNode } from 'react'
 
 interface Citation {
   signal_id?: string
@@ -21,6 +21,96 @@ interface ChatMessageProps {
   onThumbsDown?: (text?: string) => void
   isStreaming?: boolean
 }
+
+// ── Inline markdown renderer ──────────────────────────────────────────────────
+
+function renderInline(text: string, baseKey: number): ReactNode[] {
+  const parts: ReactNode[] = []
+  let remaining = text
+  let k = baseKey * 1000
+
+  const patterns: { regex: RegExp; tag: 'strong' | 'code' | 'em' }[] = [
+    { regex: /\*\*(.+?)\*\*/, tag: 'strong' },
+    { regex: /`(.+?)`/, tag: 'code' },
+    { regex: /\*(.+?)\*/, tag: 'em' },
+  ]
+
+  while (remaining.length > 0) {
+    let earliest = -1
+    let earliestMatch: RegExpMatchArray | null = null
+    let earliestTag: 'strong' | 'code' | 'em' | null = null
+
+    for (const { regex, tag } of patterns) {
+      const match = remaining.match(regex)
+      if (match && match.index !== undefined) {
+        if (earliest === -1 || match.index < earliest) {
+          earliest = match.index
+          earliestMatch = match
+          earliestTag = tag
+        }
+      }
+    }
+
+    if (!earliestMatch || earliest === -1) {
+      parts.push(remaining)
+      break
+    }
+
+    if (earliest > 0) parts.push(remaining.slice(0, earliest))
+
+    if (earliestTag === 'strong') {
+      parts.push(<strong key={k++}>{earliestMatch[1]}</strong>)
+    } else if (earliestTag === 'code') {
+      parts.push(
+        <code key={k++} className="bg-slate-100 text-slate-800 px-1 rounded text-[0.85em] font-mono">
+          {earliestMatch[1]}
+        </code>
+      )
+    } else {
+      parts.push(<em key={k++}>{earliestMatch[1]}</em>)
+    }
+
+    remaining = remaining.slice(earliest + earliestMatch[0].length)
+  }
+
+  return parts
+}
+
+function renderMarkdown(text: string): ReactNode {
+  const lines = text.split('\n')
+  const result: ReactNode[] = []
+  const ulItems: ReactNode[] = []
+  let lk = 0
+
+  const flushUl = () => {
+    if (ulItems.length > 0) {
+      result.push(
+        <ul key={`ul-${lk++}`} className="list-disc pl-4 space-y-0.5 my-1">
+          {[...ulItems]}
+        </ul>
+      )
+      ulItems.length = 0
+    }
+  }
+
+  for (const line of lines) {
+    const isBullet = line.startsWith('- ') || line.startsWith('* ')
+    if (isBullet) {
+      ulItems.push(<li key={lk++}>{renderInline(line.slice(2), lk)}</li>)
+    } else {
+      flushUl()
+      if (line.trim() === '') {
+        result.push(<span key={lk++} className="block h-2" />)
+      } else {
+        result.push(<p key={lk++} className="leading-relaxed">{renderInline(line, lk)}</p>)
+      }
+    }
+  }
+  flushUl()
+  return <>{result}</>
+}
+
+// ── Components ────────────────────────────────────────────────────────────────
 
 function ConfidenceDot({ score }: { score: number }) {
   const color =
@@ -84,14 +174,23 @@ export function ChatMessage({
       <div className={`max-w-[85%] ${isUser ? 'order-2' : 'order-1'}`}>
         {/* Message bubble */}
         <div
-          className={`rounded-xl px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${
+          className={`rounded-xl px-3.5 py-2.5 text-sm ${
             isUser
-              ? 'bg-indigo-50 text-slate-800'
-              : 'bg-white border border-slate-200 text-slate-700'
+              ? 'bg-indigo-50 text-slate-800 whitespace-pre-wrap leading-relaxed'
+              : 'bg-white border border-slate-200 text-slate-700 space-y-1'
           }`}
         >
-          {content}
-          {isStreaming && (
+          {isUser ? (
+            content
+          ) : (
+            <>
+              {renderMarkdown(content)}
+              {isStreaming && (
+                <span className="inline-block w-1.5 h-4 bg-indigo-400 ml-0.5 animate-pulse align-text-bottom" />
+              )}
+            </>
+          )}
+          {isUser && isStreaming && (
             <span className="inline-block w-1.5 h-4 bg-indigo-400 ml-0.5 animate-pulse align-text-bottom" />
           )}
         </div>

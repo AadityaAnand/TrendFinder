@@ -5,6 +5,7 @@ import { SourceBadge } from '../../components/SourceBadge'
 import { SignalQuote } from '../../components/SignalQuote'
 import { RiskIndicator } from '../../components/RiskIndicator'
 import { ChatPanel } from '../../components/ChatPanel'
+import { BriefFeedback } from '../../components/BriefFeedback'
 
 interface TrajectoryPoint {
   snapshot_id: string
@@ -39,6 +40,7 @@ interface SignalData {
 }
 
 interface OpportunityData {
+  id: string | null
   action_title: string
   why_now: string | null
   suggested_actions: string | string[] | null
@@ -217,7 +219,7 @@ async function getTrendData(id: string): Promise<TrendData | null> {
   if (snapshot) {
     const { data: oppRow } = await supabase
       .from('trend_opportunities')
-      .select('suggested_actions, qualified, opportunity_score')
+      .select('id, suggested_actions, qualified, opportunity_score')
       .eq('trend_id', id)
       .eq('snapshot_id', snapshot.id)
       .single()
@@ -237,6 +239,7 @@ async function getTrendData(id: string): Promise<TrendData | null> {
       } : null
 
       opportunity = {
+        id: oppRow.id || null,
         action_title: displayName,
         why_now: opportunity_explanation?.why_now || null,
         suggested_actions: oppRow.suggested_actions || null,
@@ -496,6 +499,7 @@ function BriefTab({ trend }: { trend: TrendData }) {
             <p className="text-sm text-slate-400">No significant risks identified yet.</p>
           )}
         </div>
+        <BriefFeedback opportunityId={trend.opportunity?.id ?? null} />
       </div>
     )
   }
@@ -676,6 +680,7 @@ function BriefTab({ trend }: { trend: TrendData }) {
           <p className="text-sm text-slate-400">No significant risks identified yet.</p>
         )}
       </div>
+      <BriefFeedback opportunityId={trend.opportunity?.id ?? null} />
     </div>
   )
 }

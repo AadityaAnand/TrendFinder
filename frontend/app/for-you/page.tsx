@@ -72,6 +72,8 @@ function ForYouContent() {
   const [snapshotId, setSnapshotId] = useState<string | null>(null)
   const [feedbackMap, setFeedbackMap] = useState<Record<string, 'saved' | 'dismissed'>>({})
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set())
+  const [audienceFilter, setAudienceFilter] = useState<'all' | 'developer' | 'creator'>('all')
+  const [whyShownId, setWhyShownId] = useState<string | null>(null)
 
   useEffect(() => {
     if (!ready) return
@@ -186,9 +188,27 @@ function ForYouContent() {
 
         {opportunities.length > 0 && (
           <section className="mb-12">
-            <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">
-              {hasQualified ? 'Ready to Build' : 'Emerging Signals'}
-            </h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                {hasQualified ? 'Ready to Build' : 'Emerging Signals'}
+              </h2>
+              {/* Audience filter tabs */}
+              <div className="flex items-center gap-1">
+                {(['all', 'developer', 'creator'] as const).map(f => (
+                  <button
+                    key={f}
+                    onClick={() => setAudienceFilter(f)}
+                    className={`text-[11px] px-2.5 py-1 rounded-lg font-medium transition-colors ${
+                      audienceFilter === f
+                        ? 'bg-slate-800 text-white'
+                        : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    {f === 'all' ? 'All' : f === 'developer' ? 'Dev' : 'Creator'}
+                  </button>
+                ))}
+              </div>
+            </div>
             {!hasQualified && (
               <p className="text-xs text-amber-600 mb-4">
                 No fully qualified hypotheses yet. Showing top emerging signals still gathering evidence.
@@ -200,6 +220,10 @@ function ForYouContent() {
                 if (dismissedIds.has(opp.id)) return null
                 const h = opp.hypothesis
                 const isCreator = h?.hypothesis_type === 'creator'
+
+                // Audience filter
+                if (audienceFilter === 'developer' && isCreator) return null
+                if (audienceFilter === 'creator' && !isCreator) return null
 
                 // Creator card branch
                 if (isCreator) {
@@ -356,12 +380,53 @@ function ForYouContent() {
                     )}
 
                     <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between">
-                      <Link
-                        href={`/trends/${opp.trend_id}`}
-                        className="text-xs font-medium text-indigo-600 hover:text-indigo-700 transition-colors"
-                      >
-                        Open Brief &rarr;
-                      </Link>
+                      <div className="flex items-center gap-3">
+                        <Link
+                          href={`/trends/${opp.trend_id}`}
+                          className="text-xs font-medium text-indigo-600 hover:text-indigo-700 transition-colors"
+                        >
+                          Open Brief &rarr;
+                        </Link>
+                        <Link
+                          href={`/trends/${opp.trend_id}`}
+                          title="Ask Rishi about this"
+                          className="text-xs text-slate-400 hover:text-indigo-500 transition-colors flex items-center gap-1"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                          </svg>
+                          Ask
+                        </Link>
+                        {/* Why shown popover */}
+                        <div className="relative">
+                          <button
+                            onClick={() => setWhyShownId(whyShownId === opp.id ? null : opp.id)}
+                            title="Why is this here?"
+                            className="text-slate-300 hover:text-slate-500 transition-colors"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <circle cx="12" cy="12" r="10" strokeWidth={2} />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 16v-4M12 8h.01" />
+                            </svg>
+                          </button>
+                          {whyShownId === opp.id && (
+                            <div className="absolute bottom-6 left-0 z-20 w-60 bg-white border border-slate-200 rounded-xl shadow-lg p-3">
+                              <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Why you see this</p>
+                              {(opp.fit_reasons || []).filter(r => !r.includes('avoid')).length > 0 ? (
+                                <ul className="space-y-1">
+                                  {opp.fit_reasons.filter(r => !r.includes('avoid')).map((r, i) => (
+                                    <li key={i} className="text-xs text-slate-600 flex gap-1.5">
+                                      <span className="text-indigo-400 shrink-0">•</span>{r}
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <p className="text-xs text-slate-500">Based on your profile preferences.</p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => handleFeedback(opp.id, 'saved')}

@@ -1,9 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
+
+const ONBOARDING_STORAGE_KEY = 'rishi_onboarding_v1'
 
 interface UserPreferences {
   id: string
@@ -252,20 +255,67 @@ export default function SettingsPage() {
   const [audienceSize, setAudienceSize] = useState<string>('')
   const [monetizationPrefs, setMonetizationPrefs] = useState<string[]>([])
 
+  // Settings-mode extra sections
+  const [savedOpps, setSavedOpps] = useState<{ opportunity_id: string; trend_id: string; action_title: string }[]>([])
+  const [chatSessions, setChatSessions] = useState<{ id: string; trend_id: string; trend_name: string; message_count: number; updated_at: string }[]>([])
+  const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null)
+
+  const loadSavedOpps = useCallback(async (uid: string) => {
+    const res = await fetch(`/api/feedback?user_id=${uid}&feedback_type=saved`)
+    if (!res.ok) return
+    const data = await res.json()
+    const opps = (data.feedback || []).map((f: { opportunity_id: string; trend_opportunities: { action_title: string; trend_id: string } | null }) => ({
+      opportunity_id: f.opportunity_id,
+      trend_id: f.trend_opportunities?.trend_id || '',
+      action_title: f.trend_opportunities?.action_title || 'Unnamed opportunity',
+    }))
+    setSavedOpps(opps)
+  }, [])
+
+  const loadChatSessions = useCallback(async (uid: string) => {
+    const res = await fetch(`/api/chat/sessions/all?user_id=${uid}`)
+    if (!res.ok) return
+    const data = await res.json()
+    setChatSessions(data.sessions || [])
+  }, [])
+
   useEffect(() => {
     if (!ready) return
     if (!isLoggedIn) {
       router.replace('/sign-in')
       return
     }
-    setIsOnboarding(!hasPrefs)
+    const onboarding = !hasPrefs
+    setIsOnboarding(onboarding)
     if (profileId) {
       loadProfile(profileId)
+      if (!onboarding) {
+        loadSavedOpps(profileId)
+        loadChatSessions(profileId)
+      } else {
+        // Restore onboarding progress from localStorage
+        try {
+          const saved = localStorage.getItem(ONBOARDING_STORAGE_KEY)
+          if (saved) {
+            const progress = JSON.parse(saved)
+            if (progress.step) setStep(progress.step)
+            if (progress.builderType) setBuilderType(progress.builderType)
+            if (progress.goal) setGoal(progress.goal)
+            if (progress.experienceLevel) setExperienceLevel(progress.experienceLevel)
+            if (progress.domains) setDomains(progress.domains)
+            if (progress.techStack) setTechStack(progress.techStack)
+            if (progress.platforms) setPlatforms(progress.platforms)
+            if (progress.niches) setNiches(progress.niches)
+            if (progress.audienceSize) setAudienceSize(progress.audienceSize)
+            if (progress.monetizationPrefs) setMonetizationPrefs(progress.monetizationPrefs)
+          }
+        } catch { /* ignore localStorage errors */ }
+      }
     } else {
       setLoading(false)
       setError('Profile not found. Please sign up again.')
     }
-  }, [ready, isLoggedIn, hasPrefs, profileId, router])
+  }, [ready, isLoggedIn, hasPrefs, profileId, router, loadSavedOpps, loadChatSessions])
 
   const loadProfile = async (pid: string) => {
     try {
@@ -361,6 +411,7 @@ export default function SettingsPage() {
       setLastSavedAt(new Date().toISOString())
 
       if (isOnboarding) {
+        localStorage.removeItem(ONBOARDING_STORAGE_KEY)
         setStep(getActiveSteps().length) // show welcome screen
       }
     } catch (err) {
@@ -370,10 +421,21 @@ export default function SettingsPage() {
     }
   }
 
+  const saveOnboardingProgress = (nextStep: number) => {
+    try {
+      localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify({
+        step: nextStep, builderType, goal, experienceLevel, domains, techStack,
+        platforms, niches, audienceSize, monetizationPrefs,
+      }))
+    } catch { /* ignore */ }
+  }
+
   const handleNext = () => {
     const steps = getActiveSteps()
     if (step < steps.length - 1) {
-      setStep(step + 1)
+      const nextStep = step + 1
+      if (isOnboarding) saveOnboardingProgress(nextStep)
+      setStep(nextStep)
     } else {
       handleSave()
     }
@@ -629,6 +691,82 @@ export default function SettingsPage() {
             Last saved {new Date(lastSavedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
             {profile?.preferences?.preference_version ? ` · v${profile.preferences.preference_version}` : ''}
           </p>
+        )}
+
+        {/* Saved Opportunities (settings mode only) */}
+        {!isOnboarding && (
+          <div className="mt-12 pt-8 border-t border-slate-100">
+            <h2 className="text-base font-semibold text-slate-900 mb-1">Saved Opportunities</h2>
+            <p className="text-xs text-slate-400 mb-4">Opportunities you&apos;ve saved from your feed.</p>
+            {savedOpps.length === 0 ? (
+              <p className="text-sm text-slate-400">No saved opportunities yet. Save some from your <Link href="/for-you" className="text-indigo-600 hover:underline">feed</Link>.</p>
+            ) : (
+              <ul className="space-y-2">
+                {savedOpps.map(opp => (
+                  <li key={opp.opportunity_id} className="flex items-center justify-between gap-3 p-3 bg-slate-50 rounded-lg">
+                    <Link
+                      href={`/trends/${opp.trend_id}`}
+                      className="text-sm text-slate-700 hover:text-indigo-600 transition-colors truncate"
+                    >
+                      {opp.action_title}
+                    </Link>
+                    <button
+                      onClick={async () => {
+                        if (!profileId) return
+                        setSavedOpps(prev => prev.filter(o => o.opportunity_id !== opp.opportunity_id))
+                        await fetch(`/api/feedback?user_id=${profileId}&opportunity_id=${opp.opportunity_id}`, { method: 'DELETE' })
+                      }}
+                      className="text-xs text-slate-400 hover:text-red-500 shrink-0 transition-colors"
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
+        {/* Chat History (settings mode only) */}
+        {!isOnboarding && (
+          <div className="mt-10 pt-8 border-t border-slate-100">
+            <h2 className="text-base font-semibold text-slate-900 mb-1">Chat History</h2>
+            <p className="text-xs text-slate-400 mb-4">Your past conversations with Rishi AI.</p>
+            {chatSessions.length === 0 ? (
+              <p className="text-sm text-slate-400">No chat sessions yet. Open any trend and click &ldquo;Ask Rishi&rdquo;.</p>
+            ) : (
+              <ul className="space-y-2">
+                {chatSessions.map(session => (
+                  <li key={session.id} className="flex items-center justify-between gap-3 p-3 bg-slate-50 rounded-lg">
+                    <div className="min-w-0">
+                      <Link
+                        href={`/trends/${session.trend_id}`}
+                        className="text-sm text-slate-700 hover:text-indigo-600 transition-colors truncate block"
+                      >
+                        {session.trend_name}
+                      </Link>
+                      <p className="text-[10px] text-slate-400 mt-0.5">
+                        {session.message_count} messages · {new Date(session.updated_at).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <button
+                      disabled={deletingSessionId === session.id}
+                      onClick={async () => {
+                        if (!profileId) return
+                        setDeletingSessionId(session.id)
+                        const res = await fetch(`/api/chat/session/${session.id}?user_id=${profileId}`, { method: 'DELETE' })
+                        if (res.ok) setChatSessions(prev => prev.filter(s => s.id !== session.id))
+                        setDeletingSessionId(null)
+                      }}
+                      className="text-xs text-slate-400 hover:text-red-500 shrink-0 transition-colors disabled:opacity-50"
+                    >
+                      {deletingSessionId === session.id ? 'Deleting...' : 'Delete'}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         )}
       </div>
     </div>

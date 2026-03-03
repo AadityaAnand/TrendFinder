@@ -15,6 +15,18 @@ const AUDIENCE_FILTERS = [
   { key: 'creator', label: 'Creator Opportunities' },
 ]
 
+const SORT_OPTIONS = [
+  { key: 'newest', label: 'Newest' },
+  { key: 'top', label: 'Most active' },
+]
+
+const DATE_OPTIONS = [
+  { key: 'all', label: 'All time' },
+  { key: '7d', label: '7 days' },
+  { key: '30d', label: '30 days' },
+  { key: '3m', label: '3 months' },
+]
+
 interface HypothesisItem {
   trend_id: string
   display_title: string
@@ -29,6 +41,7 @@ interface HypothesisItem {
   signal_count: number
   qualified: boolean
   source_count: number
+  first_seen: string | null
 }
 
 async function getHypotheses(): Promise<{ items: HypothesisItem[]; snapshotTime: string | null; todaySignals: number }> {
@@ -56,7 +69,7 @@ async function getHypotheses(): Promise<{ items: HypothesisItem[]; snapshotTime:
   const trendIds = snapshotItems.map(s => s.trend_id)
 
   const [trendsRes, lifecycleRes, oppRes, hypothesesRes, evidenceRes] = await Promise.all([
-    db.from('detected_trends').select('id, theme').in('id', trendIds),
+    db.from('detected_trends').select('id, theme, first_seen').in('id', trendIds),
     db.from('trend_lifecycle_history').select('trend_id, lifecycle_stage, stage_confidence, acceleration_comparable').eq('snapshot_id', snapshot.id).in('trend_id', trendIds),
     db.from('trend_opportunities').select('trend_id, qualified').eq('snapshot_id', snapshot.id).in('trend_id', trendIds),
     db.from('problem_hypotheses').select('trend_id, hypothesis_title, hypothesis_summary, hypothesis_status, hypothesis_type, confidence').eq('snapshot_id', snapshot.id).in('trend_id', trendIds),
@@ -107,6 +120,7 @@ async function getHypotheses(): Promise<{ items: HypothesisItem[]; snapshotTime:
       signal_count: item.signal_count || 0,
       qualified: opp?.qualified || false,
       source_count: sourceCountMap.get(item.trend_id)?.size || 0,
+      first_seen: (trend as { id: string; theme: string; first_seen?: string } | undefined)?.first_seen || null,
     }
   })
 
@@ -118,11 +132,13 @@ async function getHypotheses(): Promise<{ items: HypothesisItem[]; snapshotTime:
 export default async function ExplorePage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; q?: string; type?: string }>
+  searchParams: Promise<{ status?: string; q?: string; type?: string; sort?: string; date?: string }>
 }) {
   const params = await searchParams
   const selectedStatus = params.status || 'all'
   const selectedType = params.type || 'all'
+  const selectedSort = params.sort || 'newest'
+  const selectedDate = params.date || 'all'
   const query = params.q?.trim().toLowerCase() || ''
   const { items: allItems, snapshotTime, todaySignals } = await getHypotheses()
 
@@ -138,13 +154,29 @@ export default async function ExplorePage({
     filtered = filtered.filter(i => i.display_title.toLowerCase().includes(query))
   }
 
-  function buildUrl(p: { status?: string; q?: string; type?: string }) {
+  // Date filter
+  if (selectedDate !== 'all') {
+    const days = selectedDate === '7d' ? 7 : selectedDate === '30d' ? 30 : 90
+    const cutoff = new Date(Date.now() - days * 86400000).toISOString()
+    filtered = filtered.filter(i => !i.first_seen || i.first_seen >= cutoff)
+  }
+
+  // Sort
+  if (selectedSort === 'top') {
+    filtered = [...filtered].sort((a, b) => (b.signal_count || 0) - (a.signal_count || 0))
+  }
+
+  function buildUrl(p: { status?: string; q?: string; type?: string; sort?: string; date?: string }) {
     const parts: string[] = []
     const s = p.status ?? selectedStatus
     const t = p.type ?? selectedType
+    const so = p.sort ?? selectedSort
+    const d = p.date ?? selectedDate
     const qr = p.q ?? query
     if (s && s !== 'all') parts.push(`status=${s}`)
     if (t && t !== 'all') parts.push(`type=${t}`)
+    if (so && so !== 'newest') parts.push(`sort=${so}`)
+    if (d && d !== 'all') parts.push(`date=${d}`)
     if (qr) parts.push(`q=${encodeURIComponent(qr)}`)
     return parts.length > 0 ? `/explore?${parts.join('&')}` : '/explore'
   }
@@ -181,6 +213,8 @@ export default async function ExplorePage({
           />
           {selectedStatus !== 'all' && <input type="hidden" name="status" value={selectedStatus} />}
           {selectedType !== 'all' && <input type="hidden" name="type" value={selectedType} />}
+          {selectedSort !== 'newest' && <input type="hidden" name="sort" value={selectedSort} />}
+          {selectedDate !== 'all' && <input type="hidden" name="date" value={selectedDate} />}
         </form>
 
         <div className="flex items-center gap-1.5 mb-2 overflow-x-auto pb-1">
@@ -207,7 +241,7 @@ export default async function ExplorePage({
           })}
         </div>
 
-        <div className="flex items-center gap-1.5 mb-3 overflow-x-auto pb-1">
+        <div className="flex items-center gap-1.5 mb-2 overflow-x-auto pb-1">
           {AUDIENCE_FILTERS.map(f => {
             const isActive = f.key === selectedType
             return (
@@ -226,10 +260,45 @@ export default async function ExplorePage({
           })}
         </div>
 
-        {(query || selectedStatus !== 'all' || selectedType !== 'all') && (
+        {/* Sort + Date filters */}
+        <div className="flex items-center gap-3 mb-4 overflow-x-auto pb-1">
+          <div className="flex items-center gap-1 shrink-0">
+            {SORT_OPTIONS.map(f => (
+              <Link
+                key={f.key}
+                href={buildUrl({ sort: f.key })}
+                className={`shrink-0 px-2.5 py-1 rounded-lg text-[11px] font-medium transition ${
+                  selectedSort === f.key
+                    ? 'bg-indigo-50 text-indigo-600'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                {f.label}
+              </Link>
+            ))}
+          </div>
+          <span className="text-slate-200 text-xs shrink-0">|</span>
+          <div className="flex items-center gap-1 shrink-0">
+            {DATE_OPTIONS.map(f => (
+              <Link
+                key={f.key}
+                href={buildUrl({ date: f.key })}
+                className={`shrink-0 px-2.5 py-1 rounded-lg text-[11px] font-medium transition ${
+                  selectedDate === f.key
+                    ? 'bg-indigo-50 text-indigo-600'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                {f.label}
+              </Link>
+            ))}
+          </div>
+        </div>
+
+        {(query || selectedStatus !== 'all' || selectedType !== 'all' || selectedSort !== 'newest' || selectedDate !== 'all') && (
           <div className="flex items-center gap-2 mb-6 text-xs text-slate-400">
             <span>{filtered.length} result{filtered.length !== 1 ? 's' : ''}</span>
-            <Link href="/explore" className="text-indigo-600 hover:text-indigo-700 underline ml-1">Clear</Link>
+            <Link href="/explore" className="text-indigo-600 hover:text-indigo-700 underline ml-1">Clear filters</Link>
           </div>
         )}
 
