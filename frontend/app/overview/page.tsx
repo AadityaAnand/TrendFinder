@@ -71,13 +71,21 @@ export default async function OverviewPage() {
             Welcome to Rishi
           </h1>
           <p className="text-base text-slate-500 mt-2 max-w-2xl leading-relaxed">
-            Your evidence-based foresight engine. Rishi watches developer signals across
-            Hacker News, GitHub, Dev.to, and Reddit &mdash; then surfaces what&apos;s actionable.
+            Rishi finds emerging trends before they take off. We scan conversations across
+            Hacker News, GitHub, Dev.to, and Reddit to spot patterns worth building on.
           </p>
           {snapshot && (
             <p className="text-sm text-slate-600 mt-3">
-              <span className="font-medium text-indigo-600">{qualifiedCount} {qualifiedCount === 1 ? 'opportunity' : 'opportunities'}</span> ready to brief.
-              {watchingCount > 0 && <> Watching {watchingCount} more.</>}
+              {qualifiedCount > 0 ? (
+                <>
+                  <span className="font-medium text-indigo-600">{qualifiedCount} {qualifiedCount === 1 ? 'opportunity' : 'opportunities'}</span> ready to explore.
+                  {watchingCount > 0 && <> Plus {watchingCount} {watchingCount === 1 ? 'trend' : 'trends'} we&apos;re keeping an eye on.</>}
+                </>
+              ) : watchingCount > 0 ? (
+                <>We&apos;re tracking <span className="font-medium text-slate-800">{watchingCount}</span> potential {watchingCount === 1 ? 'trend' : 'trends'} right now. None have gathered enough evidence to become a full opportunity yet, but we&apos;re watching closely.</>
+              ) : (
+                <>No trends detected yet. Check back after the next pipeline run.</>
+              )}
             </p>
           )}
         </div>
@@ -101,15 +109,15 @@ export default async function OverviewPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
-            <p className="text-sm font-medium text-slate-600 mb-1">Pipeline hasn&apos;t run yet</p>
+            <p className="text-sm font-medium text-slate-600 mb-1">Still warming up</p>
             <p className="text-xs text-slate-500">
-              Rishi collects signals daily at 6:00 AM UTC. Check back after the first run to see trends.
+              The first pipeline run collects signals and takes a few minutes. Check back soon to see what&apos;s trending.
             </p>
           </div>
         )}
 
         <div className="mb-10">
-          <h2 className="text-lg font-semibold text-slate-900 mb-4">Get started</h2>
+          <h2 className="text-lg font-semibold text-slate-900 mb-4">Jump in</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <Link href="/settings" className="bg-white border border-slate-200 rounded-xl p-4 hover:border-slate-300 hover:shadow-sm transition group">
               <div className="flex items-center gap-3 mb-2">
@@ -121,7 +129,7 @@ export default async function OverviewPage() {
                 </div>
                 <span className="text-sm font-semibold text-slate-900">Set preferences</span>
               </div>
-              <p className="text-xs text-slate-500">Tell Rishi your role, domains, and tech stack to personalize results.</p>
+              <p className="text-xs text-slate-500">Tell us what you build and what you care about — we&apos;ll match trends to you.</p>
             </Link>
             <Link href="/for-you" className="bg-white border border-slate-200 rounded-xl p-4 hover:border-slate-300 hover:shadow-sm transition group">
               <div className="flex items-center gap-3 mb-2">
@@ -132,7 +140,7 @@ export default async function OverviewPage() {
                 </div>
                 <span className="text-sm font-semibold text-slate-900">See For You</span>
               </div>
-              <p className="text-xs text-slate-500">View personalized opportunities matched to your profile and interests.</p>
+              <p className="text-xs text-slate-500">See opportunities that match your profile — ranked by how relevant they are to you.</p>
             </Link>
             <Link href="/explore" className="bg-white border border-slate-200 rounded-xl p-4 hover:border-slate-300 hover:shadow-sm transition group">
               <div className="flex items-center gap-3 mb-2">
@@ -143,7 +151,7 @@ export default async function OverviewPage() {
                 </div>
                 <span className="text-sm font-semibold text-slate-900">Explore trends</span>
               </div>
-              <p className="text-xs text-slate-500">Browse the full landscape of detected trends across the developer ecosystem.</p>
+              <p className="text-xs text-slate-500">Browse everything we&apos;re tracking — filter by audience, sort by activity, and dig into signals.</p>
             </Link>
           </div>
         </div>
@@ -179,8 +187,8 @@ export default async function OverviewPage() {
 
         <div className="bg-white border border-slate-200 rounded-xl p-5 flex items-center justify-between">
           <div>
-            <p className="text-sm font-medium text-slate-600">Want to understand how Rishi works?</p>
-            <p className="text-xs text-slate-500 mt-0.5">Learn about signals, evidence gates, and how opportunities are qualified.</p>
+            <p className="text-sm font-medium text-slate-600">Curious how we find these trends?</p>
+            <p className="text-xs text-slate-500 mt-0.5">Read about our method — signals, evidence, and how we decide what&apos;s worth building.</p>
           </div>
           <Link href="/method" className="rishi-btn-secondary text-xs! px-3! py-1.5!">
             Read the method

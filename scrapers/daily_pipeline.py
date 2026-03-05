@@ -308,12 +308,13 @@ def save_pipeline_run(
         logger.error(f"Failed to save pipeline run: {e}")
 
 
-def run_scraper(name: str) -> bool:
+def run_scraper(name: str, extra_args: list = None) -> bool:
     import subprocess
     logger.info(f"Running {name}...")
+    cmd = ['python', f'{name}.py'] + (extra_args or [])
     try:
         result = subprocess.run(
-            ['python', f'{name}.py'],
+            cmd,
             cwd=os.path.dirname(os.path.abspath(__file__)),
             capture_output=True,
             text=True,
@@ -332,9 +333,9 @@ def run_scraper(name: str) -> bool:
         return False
 
 
-def run_pipeline(skip_scrapers: bool = False, force: bool = False) -> dict:
+def run_pipeline(skip_scrapers: bool = False, force: bool = False, diagnostic: bool = False) -> dict:
     logger.info("=" * 60)
-    logger.info("DAILY PIPELINE")
+    logger.info(f"DAILY PIPELINE{'  [DIAGNOSTIC MODE]' if diagnostic else ''}")
     logger.info(f"Pipeline version: {PIPELINE_VERSION}")
     logger.info(f"UTC date: {get_today_utc()}")
     logger.info("=" * 60)
@@ -377,7 +378,8 @@ def run_pipeline(skip_scrapers: bool = False, force: bool = False) -> dict:
         if run_scraper('hypothesis_generator'):
             stages_completed.append('hypothesis_generation')
 
-        if run_scraper('opportunity_detector'):
+        opp_args = ['--diagnostic-mode'] if diagnostic else []
+        if run_scraper('opportunity_detector', extra_args=opp_args):
             stages_completed.append('opportunity_detection')
 
         if run_scraper('opportunity_explainer'):
@@ -456,7 +458,8 @@ def run_pipeline(skip_scrapers: bool = False, force: bool = False) -> dict:
 if __name__ == '__main__':
     skip_scrapers = '--skip-scrapers' in sys.argv
     force = '--force' in sys.argv
-    result = run_pipeline(skip_scrapers=skip_scrapers, force=force)
+    diagnostic = '--diagnostic-mode' in sys.argv
+    result = run_pipeline(skip_scrapers=skip_scrapers, force=force, diagnostic=diagnostic)
 
     print(f"\n=== Pipeline Result ===")
     print(f"Success: {result.get('success', False)}")

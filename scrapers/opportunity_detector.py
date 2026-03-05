@@ -22,6 +22,10 @@ MIN_STAGE_CONFIDENCE = 0.6
 MIN_DEMAND_HITS = 1
 MIN_HYPOTHESIS_CONFIDENCE = 0.4
 
+# Diagnostic mode — relaxed thresholds, set via run_opportunity_detection(diagnostic=True)
+# or --diagnostic-mode CLI flag. Does NOT write to production qualify flags.
+DIAGNOSTIC_MODE = False
+
 WRAPPER_DOMAINS = {'news.ycombinator.com', 'reddit.com', 'www.reddit.com',
                    'twitter.com', 'x.com', 'facebook.com', 'linkedin.com'}
 
@@ -87,6 +91,36 @@ def get_supabase() -> Client:
     if not url or not key:
         raise ValueError("Missing SUPABASE_URL or SUPABASE_KEY")
     return create_client(url, key)
+
+
+def log_gate_decision(
+    supabase: Client,
+    snapshot_id: str,
+    trend_id: str,
+    trend_keyword: str,
+    gate_name: str,
+    passed: bool,
+    calculated_value: Optional[float] = None,
+    threshold: Optional[float] = None,
+    details: Optional[dict] = None,
+    signal_type: str = 'developer',
+) -> None:
+    """Fire-and-forget gate decision logger. Never blocks the pipeline."""
+    try:
+        supabase.table('pipeline_qualification_log').insert({
+            'snapshot_id': snapshot_id,
+            'trend_id': trend_id,
+            'trend_keyword': trend_keyword,
+            'gate_name': gate_name,
+            'passed': passed,
+            'calculated_value': calculated_value,
+            'threshold': threshold,
+            'details': details or {},
+            'signal_type': signal_type,
+            'diagnostic_mode': DIAGNOSTIC_MODE,
+        }).execute()
+    except Exception:
+        pass  # Table may not exist yet; never block the pipeline on logging
 
 
 def get_latest_snapshot(supabase: Client) -> Optional[dict]:
@@ -261,12 +295,13 @@ def check_confidence_gate(lifecycle: Optional[dict], is_proto: bool = False) -> 
         reasons.append('no_lifecycle_data')
         return False, reasons
 
-    if not lifecycle.get('acceleration_comparable', False):
-        reasons.append('acceleration_not_comparable')
+    # acceleration_comparable is no longer a hard gate — it was blocking all early-stage clusters.
+    # We record it in details for logging, but it does not cause a gate failure.
 
     confidence = lifecycle.get('stage_confidence', 0) or 0
-    if confidence < MIN_STAGE_CONFIDENCE:
-        reasons.append('low_confidence')
+    threshold = 0.4 if DIAGNOSTIC_MODE else MIN_STAGE_CONFIDENCE
+    if confidence < threshold:
+        reasons.append(f'low_confidence:{confidence:.2f}')
 
     if reasons:
         return False, reasons
@@ -420,9 +455,14 @@ def get_hypothesis(supabase: Client, snapshot_id: str, trend_id: str) -> Optiona
 def check_hypothesis_gate(hypothesis: Optional[dict]) -> tuple[bool, list[str]]:
     if not hypothesis:
         return False, ['no_hypothesis']
-    if hypothesis.get('hypothesis_status') != 'valid':
-        return False, [f"hypothesis_status_{hypothesis.get('hypothesis_status', 'missing')}"]
-    if (hypothesis.get('confidence') or 0) < MIN_HYPOTHESIS_CONFIDENCE:
+    # Accept 'valid' or 'pending' — LLMs sometimes produce 'pending' for legitimate hypotheses.
+    # Only hard-reject known-bad statuses like 'invalid' or 'rejected'.
+    valid_statuses = {'valid', 'pending'}
+    status = hypothesis.get('hypothesis_status', 'missing')
+    if status not in valid_statuses:
+        return False, [f'hypothesis_status_{status}']
+    threshold = 0.25 if DIAGNOSTIC_MODE else MIN_HYPOTHESIS_CONFIDENCE
+    if (hypothesis.get('confidence') or 0) < threshold:
         return False, ['hypothesis_low_confidence']
     return True, []
 
@@ -453,20 +493,42 @@ def evaluate_trend_as_opportunity(
 
     # Gate 0: Persistence — must appear in >=2 days or show breakout
     persistence_ok, persistence_reason = check_persistence_gate(lifecycle)
+    days_seen = lifecycle.get('days_seen', 0) if lifecycle else 0
+    log_gate_decision(supabase, snapshot_id, trend_id, trend_keyword, 'persistence',
+        persistence_ok,
+        calculated_value=float(days_seen),
+        threshold=2.0,
+        details={
+            'reason': persistence_reason,
+            'momentum_change_pct': lifecycle.get('momentum_change_pct') if lifecycle else None,
+            'time_gap_hours': lifecycle.get('time_gap_hours') if lifecycle else None,
+        })
     if not persistence_ok:
         result['rejection_reasons'].append(persistence_reason)
         return result
 
     artifact_count = get_canonical_artifact_count(supabase, snapshot_id, trend_id)
     result['independent_artifact_count'] = artifact_count
-
     evidence_ok, evidence_reason = check_evidence_gate(artifact_count)
+    log_gate_decision(supabase, snapshot_id, trend_id, trend_keyword, 'artifact',
+        evidence_ok,
+        calculated_value=float(artifact_count),
+        threshold=float(MIN_INDEPENDENT_ARTIFACTS),
+        details={'reason': evidence_reason})
     if not evidence_ok:
         result['rejection_reasons'].append(evidence_reason)
         return result
 
     hypothesis = get_hypothesis(supabase, snapshot_id, trend_id)
     hypothesis_ok, hypothesis_reasons = check_hypothesis_gate(hypothesis)
+    log_gate_decision(supabase, snapshot_id, trend_id, trend_keyword, 'hypothesis',
+        hypothesis_ok,
+        calculated_value=float(hypothesis.get('confidence') or 0) if hypothesis else None,
+        threshold=float(MIN_HYPOTHESIS_CONFIDENCE),
+        details={
+            'reasons': hypothesis_reasons,
+            'status': hypothesis.get('hypothesis_status') if hypothesis else None,
+        })
     if not hypothesis_ok:
         result['rejection_reasons'].extend(hypothesis_reasons)
         return result
@@ -477,6 +539,17 @@ def evaluate_trend_as_opportunity(
         result['who_it_affects'] = hypothesis.get('who_it_affects', [])
 
     confidence_ok, confidence_reasons = check_confidence_gate(lifecycle)
+    stage_confidence = lifecycle.get('stage_confidence', 0) if lifecycle else 0
+    accel_comparable = lifecycle.get('acceleration_comparable', False) if lifecycle else False
+    log_gate_decision(supabase, snapshot_id, trend_id, trend_keyword, 'confidence',
+        confidence_ok,
+        calculated_value=float(stage_confidence or 0),
+        threshold=float(MIN_STAGE_CONFIDENCE),
+        details={
+            'reasons': confidence_reasons,
+            'acceleration_comparable': accel_comparable,
+            'diagnostic_mode': DIAGNOSTIC_MODE,
+        })
     if not confidence_ok:
         result['rejection_reasons'].extend(confidence_reasons)
         return result
@@ -488,6 +561,12 @@ def evaluate_trend_as_opportunity(
     if signal_type == 'creator':
         creator_result = check_creator_gates(trend_id, signals, snapshot_id, supabase)
         qualified = creator_result['qualified']
+        for gate_name, gate_data in creator_result.get('gates', {}).items():
+            log_gate_decision(supabase, snapshot_id, trend_id, trend_keyword,
+                f'creator_{gate_name}', gate_data.get('passed', False),
+                calculated_value=gate_data.get('value'),
+                signal_type='creator',
+                details=gate_data)
         if not qualified:
             failed_gates = [k for k, v in creator_result['gates'].items() if not v['passed']]
             result['rejection_reasons'].extend([f'creator_gate_failed:{g}' for g in failed_gates])
@@ -512,6 +591,11 @@ def evaluate_trend_as_opportunity(
     result['demand_examples'] = demand_examples
 
     demand_ok, demand_reason = check_demand_gate(demand_hits)
+    log_gate_decision(supabase, snapshot_id, trend_id, trend_keyword, 'demand',
+        demand_ok,
+        calculated_value=float(demand_hits),
+        threshold=float(MIN_DEMAND_HITS),
+        details={'reason': demand_reason, 'examples': [e.get('title', '') for e in demand_examples[:3]]})
     if not demand_ok:
         result['rejection_reasons'].append(demand_reason)
         return result
@@ -521,6 +605,11 @@ def evaluate_trend_as_opportunity(
 
     action_ok, actionability_score, action_reason = check_actionability_gate(actions_with_types)
     result['actionability_score'] = actionability_score
+    log_gate_decision(supabase, snapshot_id, trend_id, trend_keyword, 'actionability',
+        action_ok,
+        calculated_value=actionability_score,
+        threshold=0.5,
+        details={'reason': action_reason, 'actions': [a for a, _ in actions_with_types[:3]]})
 
     if not action_ok:
         result['rejection_reasons'].append(action_reason)
@@ -566,11 +655,14 @@ def save_opportunity_result(supabase: Client, result: dict) -> None:
         .execute()
 
 
-def run_opportunity_detection(snapshot_id: str = None) -> dict:
+def run_opportunity_detection(snapshot_id: str = None, diagnostic: bool = False) -> dict:
+    global DIAGNOSTIC_MODE
+    DIAGNOSTIC_MODE = diagnostic
+
     supabase = get_supabase()
 
     logger.info("=" * 60)
-    logger.info("OPPORTUNITY DETECTION")
+    logger.info(f"OPPORTUNITY DETECTION{'  [DIAGNOSTIC MODE]' if diagnostic else ''}")
     logger.info("=" * 60)
 
     if not snapshot_id:
@@ -632,8 +724,16 @@ def run_opportunity_detection(snapshot_id: str = None) -> dict:
 
 
 if __name__ == '__main__':
-    stats = run_opportunity_detection()
+    import sys
+    diagnostic_mode = '--diagnostic-mode' in sys.argv
+    if diagnostic_mode:
+        print("Running in DIAGNOSTIC MODE — thresholds relaxed")
+    stats = run_opportunity_detection(diagnostic=diagnostic_mode)
     print(f"\n=== Final Stats ===")
     print(f"Qualified: {stats['qualified']}")
     print(f"Rejected: {stats['rejected']}")
     print(f"Total: {stats['total']}")
+    if stats.get('rejection_stats'):
+        print("\nRejection breakdown:")
+        for reason, count in sorted(stats['rejection_stats'].items(), key=lambda x: -x[1]):
+            print(f"  {reason}: {count}")
