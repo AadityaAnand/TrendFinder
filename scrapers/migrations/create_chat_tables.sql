@@ -41,3 +41,13 @@ CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON opportunity_chat_message
 CREATE INDEX IF NOT EXISTS idx_chat_messages_role ON opportunity_chat_messages(session_id, role);
 CREATE INDEX IF NOT EXISTS idx_chat_feedback_message ON chat_message_feedback(message_id);
 CREATE INDEX IF NOT EXISTS idx_chat_feedback_user ON chat_message_feedback(user_id, created_at DESC);
+
+-- RPC to atomically increment session message count
+CREATE OR REPLACE FUNCTION increment_chat_session_count(session_id_param UUID)
+RETURNS void AS $$
+BEGIN
+  UPDATE opportunity_chat_sessions
+  SET message_count = message_count + 1, updated_at = now()
+  WHERE id = session_id_param;
+END;
+$$ LANGUAGE plpgsql;
