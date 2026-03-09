@@ -242,7 +242,7 @@ function ForYouContent() {
                         monetization_angle: h.monetization_angle || null,
                         pain_points: h.pain_points || [],
                       } : null}
-                      engagement_velocity={(opp as Record<string, unknown>).engagement_velocity as number | undefined}
+                      engagement_velocity={(opp as unknown as Record<string, unknown>).engagement_velocity as number | undefined}
                       feedbackState={feedbackMap[opp.id] || null}
                       isExpanded={expandedId === opp.id}
                       onToggleExpand={() => setExpandedId(expandedId === opp.id ? null : opp.id)}

@@ -114,12 +114,13 @@ async function storeMessage(
   })
 
   // Increment session message_count and update updated_at
-  await db.rpc('increment_chat_session_count', { session_id_param: sessionId }).catch(() => {
+  const { error: rpcError } = await db.rpc('increment_chat_session_count', { session_id_param: sessionId })
+  if (rpcError) {
     // RPC may not exist yet — fall back to a manual update
-    db.from('opportunity_chat_sessions')
+    await db.from('opportunity_chat_sessions')
       .update({ updated_at: new Date().toISOString() })
       .eq('id', sessionId)
-  })
+  }
 }
 
 export async function POST(request: Request) {
@@ -162,14 +163,19 @@ export async function POST(request: Request) {
   }
 
   const oneHourAgo = new Date(Date.now() - 3600000).toISOString()
-  const { count: hourCount } = await db
-    .from('opportunity_chat_messages')
-    .select('id', { count: 'exact', head: true })
-    .eq('role', 'user')
-    .in('session_id',
-      db.from('opportunity_chat_sessions').select('id').eq('user_id', user_id)
-    )
-    .gte('created_at', oneHourAgo)
+  const { data: userSessions } = await db
+    .from('opportunity_chat_sessions')
+    .select('id')
+    .eq('user_id', user_id)
+  const sessionIds = (userSessions || []).map((s: { id: string }) => s.id)
+  const { count: hourCount } = sessionIds.length > 0
+    ? await db
+        .from('opportunity_chat_messages')
+        .select('id', { count: 'exact', head: true })
+        .eq('role', 'user')
+        .in('session_id', sessionIds)
+        .gte('created_at', oneHourAgo)
+    : { count: 0 }
 
   if ((hourCount || 0) >= 30) {
     return Response.json({ error: 'Rate limit: 30 messages per hour. Please try again later.' }, { status: 429 })
