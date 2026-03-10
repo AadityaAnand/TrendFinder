@@ -167,7 +167,9 @@ def compute_trajectory_summary(trajectory: list[dict]) -> dict:
             'peak_momentum_at': None,
             'current_stage': None,
             'qualified_count': 0,
-            'last_qualified_at': None
+            'last_qualified_at': None,
+            'weekly_growth_rate': None,
+            'acceleration': None,
         }
 
     peak_momentum = None
@@ -191,12 +193,44 @@ def compute_trajectory_summary(trajectory: list[dict]) -> dict:
             last_qualified_at = point.get('timestamp')
             break
 
+    # Phase 9d: Compute growth rate and acceleration from trajectory points
+    weekly_growth_rate = None
+    acceleration = None
+
+    if len(trajectory) >= 2:
+        # Get signal counts for growth rate calculation
+        recent = trajectory[-1]
+        current_signals = recent.get('signal_count') or 0
+
+        # Find point ~7 days ago (or closest)
+        prev_signals = None
+        prev_prev_signals = None
+        for i in range(len(trajectory) - 2, -1, -1):
+            point = trajectory[i]
+            sc = point.get('signal_count')
+            if sc is not None and sc > 0:
+                if prev_signals is None:
+                    prev_signals = sc
+                elif prev_prev_signals is None:
+                    prev_prev_signals = sc
+                    break
+
+        if prev_signals and prev_signals > 0:
+            weekly_growth_rate = round((current_signals - prev_signals) / prev_signals, 4)
+
+            # Acceleration = change in growth rate
+            if prev_prev_signals and prev_prev_signals > 0:
+                prev_growth = (prev_signals - prev_prev_signals) / prev_prev_signals
+                acceleration = round(weekly_growth_rate - prev_growth, 4)
+
     return {
         'peak_momentum': peak_momentum,
         'peak_momentum_at': peak_momentum_at,
         'current_stage': current_stage,
         'qualified_count': qualified_count,
-        'last_qualified_at': last_qualified_at
+        'last_qualified_at': last_qualified_at,
+        'weekly_growth_rate': weekly_growth_rate,
+        'acceleration': acceleration,
     }
 
 
@@ -240,6 +274,8 @@ def save_trajectory(
         'stage_history': json.dumps(stage_history),
         'qualified_count': summary['qualified_count'],
         'last_qualified_at': summary['last_qualified_at'],
+        'weekly_growth_rate': summary.get('weekly_growth_rate'),
+        'acceleration': summary.get('acceleration'),
         'updated_at': datetime.now(timezone.utc).isoformat(),
         'computed_from_version': TRAJECTORY_VERSION
     }

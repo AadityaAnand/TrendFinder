@@ -109,6 +109,29 @@ def get_hypothesis(supabase: Client, snapshot_id: str, trend_id: str) -> dict:
     return resp.data[0] if resp.data else {}
 
 
+def get_prediction(supabase: Client, snapshot_id: str, trend_id: str) -> dict:
+    """Phase 9d: Get growth prediction for this trend."""
+    resp = supabase.table('trend_predictions') \
+        .select('growth_probability, predicted_direction, confidence_level, prediction_reasons') \
+        .eq('snapshot_id', snapshot_id) \
+        .eq('trend_id', trend_id) \
+        .limit(1) \
+        .execute()
+    return resp.data[0] if resp.data else {}
+
+
+def get_pain_phrases(supabase: Client, snapshot_id: str, trend_id: str, limit: int = 8) -> list[dict]:
+    """Phase 9d: Get extracted pain phrases for this trend."""
+    resp = supabase.table('cluster_pain_phrases') \
+        .select('phrase, phrase_type, frequency, source_signals') \
+        .eq('snapshot_id', snapshot_id) \
+        .eq('trend_id', trend_id) \
+        .order('frequency', desc=True) \
+        .limit(limit) \
+        .execute()
+    return resp.data or []
+
+
 def get_snapshot_metrics(supabase: Client, snapshot_id: str, trend_id: str) -> dict:
     resp = supabase.table('trend_snapshot_items') \
         .select('momentum_score, signal_count, stability_score, volatility_label, negative_signal_ratio') \
@@ -259,8 +282,8 @@ def build_section_b(
     return persona, llm_prompt
 
 
-def build_section_c(intelligence: dict, opportunity: dict) -> list[dict]:
-    """Section C: What Could Be Built — build ideas from trend_intelligence."""
+def build_section_c(intelligence: dict, opportunity: dict, pain_phrases: list[dict] = None) -> list[dict]:
+    """Section C: What Could Be Built — build ideas from trend_intelligence + pain phrases."""
     build_ideas = _parse_json_field(intelligence.get('build_ideas'), [])
 
     hypotheses = []
@@ -284,6 +307,34 @@ def build_section_c(intelligence: dict, opportunity: dict) -> list[dict]:
                 })
                 if len(hypotheses) >= 3:
                     break
+
+    # Phase 9d: If still insufficient, derive ideas from pain phrases
+    if len(hypotheses) < 2 and pain_phrases:
+        for phrase in pain_phrases:
+            phrase_type = phrase.get('phrase_type', '')
+            phrase_text = phrase.get('phrase', '')[:150]
+
+            if phrase_type == 'need':
+                hypotheses.append({
+                    'idea': f'Build a tool that addresses: "{phrase_text}"',
+                    'effort': 'medium',
+                    'audience': 'People expressing this need',
+                })
+            elif phrase_type == 'frustration':
+                hypotheses.append({
+                    'idea': f'Solve the frustration: "{phrase_text}"',
+                    'effort': 'medium',
+                    'audience': 'Users experiencing this pain',
+                })
+            elif phrase_type == 'gap':
+                hypotheses.append({
+                    'idea': f'Fill the gap: "{phrase_text}"',
+                    'effort': 'medium',
+                    'audience': 'Underserved users',
+                })
+
+            if len(hypotheses) >= 3:
+                break
 
     return hypotheses[:5]
 
@@ -597,6 +648,10 @@ def generate_opportunity_brief(
             trend, hypothesis, competition, metrics, signals, evidence_hash, groq_client,
         )
 
+    # Phase 9d: Load prediction and pain phrase data
+    prediction = get_prediction(supabase, snapshot_id, trend_id)
+    pain_phrases = get_pain_phrases(supabase, snapshot_id, trend_id)
+
     # Section A
     synthesis, citations = build_section_a(explanation, signals)
 
@@ -606,8 +661,8 @@ def generate_opportunity_brief(
     # Section B
     persona, persona_llm_prompt = build_section_b(signals, trend, hypothesis, groq_client)
 
-    # Section C
-    hypotheses = build_section_c(intelligence, opportunity)
+    # Section C — now uses pain phrases as fallback for build ideas
+    hypotheses = build_section_c(intelligence, opportunity, pain_phrases)
 
     # Section D
     (competition_narrative, startups, repos, tools, funding, entity_conf) = build_section_d(competition)
@@ -686,6 +741,14 @@ def generate_opportunity_brief(
         # Signal evidence (Phase 9a)
         'signal_quotes': json.dumps(signal_quotes),
         'source_breakdown': json.dumps(source_breakdown),
+
+        # Phase 9d: Prediction data
+        'growth_indicator': prediction.get('predicted_direction', 'steady'),
+        'why_now_prediction': None,  # Populated by why_now_generator after brief gen
+        'pain_phrases': json.dumps([
+            {'phrase': p['phrase'], 'type': p['phrase_type'], 'frequency': p.get('frequency', 1)}
+            for p in pain_phrases
+        ]) if pain_phrases else None,
 
         # Auditability
         'llm_prompts': json.dumps(llm_prompts) if llm_prompts else None,

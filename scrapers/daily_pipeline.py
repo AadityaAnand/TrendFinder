@@ -394,6 +394,19 @@ def run_pipeline(skip_scrapers: bool = False, force: bool = False, diagnostic: b
         if run_scraper('trajectory_updater'):
             stages_completed.append('trajectory_update')
 
+        # Phase 9d: Novelty scoring, pain phrases, predictions, why-now
+        if run_scraper('novelty_scorer'):
+            stages_completed.append('novelty_scoring')
+
+        if run_scraper('pain_phrase_extractor'):
+            stages_completed.append('pain_phrase_extraction')
+
+        if run_scraper('prediction_engine'):
+            stages_completed.append('prediction')
+
+        if run_scraper('why_now_generator'):
+            stages_completed.append('why_now_generation')
+
         snapshots = get_recent_snapshots(limit=2)
         if not snapshots:
             error = "No snapshots found after pipeline run"

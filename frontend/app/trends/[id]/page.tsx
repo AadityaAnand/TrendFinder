@@ -77,6 +77,13 @@ interface OpportunityExplanationData {
   whats_the_risk: string | null
 }
 
+interface PredictionData {
+  growth_probability: number
+  predicted_direction: string  // 'accelerating' | 'steady' | 'declining' | 'breakout'
+  confidence_level: string     // 'high' | 'medium' | 'low'
+  prediction_reasons: { reason: string; weight: number }[]
+}
+
 interface PreBriefData {
   synthesis: string | null
   synthesis_citations: { title: string; url: string; source: string }[] | null
@@ -90,6 +97,9 @@ interface PreBriefData {
   risk_narrative: string | null
   risk_factors: { label: string; severity: string }[] | null
   is_draft: boolean
+  why_now_prediction: string | null
+  growth_indicator: string | null
+  pain_phrases: { phrase: string; type: string; frequency: number }[] | null
 }
 
 interface TrendData {
@@ -113,6 +123,7 @@ interface TrendData {
   opportunity_explanation: OpportunityExplanationData | null
   updated_at: string | null
   preBrief: PreBriefData | null
+  prediction: PredictionData | null
 }
 
 async function getTrendData(id: string): Promise<TrendData | null> {
@@ -314,12 +325,32 @@ async function getTrendData(id: string): Promise<TrendData | null> {
     }))
   }
 
-  // Fetch pre-generated brief (Phase 3)
+  // Phase 9d: Fetch prediction data
+  let prediction: PredictionData | null = null
+  if (snapshot) {
+    const { data: predRow } = await supabase
+      .from('trend_predictions')
+      .select('growth_probability, predicted_direction, confidence_level, prediction_reasons')
+      .eq('trend_id', id)
+      .eq('snapshot_id', snapshot.id)
+      .single()
+
+    if (predRow) {
+      prediction = {
+        growth_probability: predRow.growth_probability || 0,
+        predicted_direction: predRow.predicted_direction || 'steady',
+        confidence_level: predRow.confidence_level || 'low',
+        prediction_reasons: parseJson(predRow.prediction_reasons, []) as PredictionData['prediction_reasons'],
+      }
+    }
+  }
+
+  // Fetch pre-generated brief (Phase 3 + 9d)
   let preBrief: PreBriefData | null = null
   if (snapshot) {
     const { data: briefRow } = await supabase
       .from('opportunity_briefs')
-      .select('synthesis, synthesis_citations, persona_roles, persona_pain_points, hypotheses, competition_narrative, competition_repos, competition_tools, validation_experiments, risk_narrative, risk_factors, is_draft')
+      .select('synthesis, synthesis_citations, persona_roles, persona_pain_points, hypotheses, competition_narrative, competition_repos, competition_tools, validation_experiments, risk_narrative, risk_factors, is_draft, why_now_prediction, growth_indicator, pain_phrases')
       .eq('trend_id', id)
       .eq('snapshot_id', snapshot.id)
       .single()
@@ -343,6 +374,9 @@ async function getTrendData(id: string): Promise<TrendData | null> {
         risk_narrative: briefRow.risk_narrative || null,
         risk_factors: parseJ(briefRow.risk_factors, null) as PreBriefData['risk_factors'],
         is_draft: briefRow.is_draft,
+        why_now_prediction: briefRow.why_now_prediction || null,
+        growth_indicator: briefRow.growth_indicator || null,
+        pain_phrases: parseJ(briefRow.pain_phrases, null) as PreBriefData['pain_phrases'],
       }
     }
   }
@@ -370,6 +404,7 @@ async function getTrendData(id: string): Promise<TrendData | null> {
     opportunity_explanation,
     updated_at: snapshot?.run_at || null,
     preBrief,
+    prediction,
   }
 }
 
@@ -430,6 +465,13 @@ function BriefTab({ trend }: { trend: TrendData }) {
             </p>
           )}
         </div>
+
+        {pb.why_now_prediction && (
+          <div>
+            <h2 className="text-base font-semibold text-slate-900 mb-2">Why now</h2>
+            <p className="text-sm text-slate-600 leading-relaxed">{pb.why_now_prediction}</p>
+          </div>
+        )}
 
         {(pb.persona_roles?.length || painPoints.length > 0) && (
           <div>
@@ -866,6 +908,30 @@ export default async function TrendDetailPage({
             <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-500">
               Forming
             </span>
+          )}
+          {trend.prediction && (
+            <>
+              {trend.prediction.predicted_direction === 'breakout' && (
+                <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-orange-50 text-orange-700">
+                  Breakout signal
+                </span>
+              )}
+              {trend.prediction.predicted_direction === 'accelerating' && (
+                <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-green-50 text-green-700">
+                  Accelerating
+                </span>
+              )}
+              {trend.prediction.predicted_direction === 'declining' && (
+                <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-red-50 text-red-600">
+                  Declining
+                </span>
+              )}
+              {trend.prediction.growth_probability > 0.5 && (
+                <span className="text-xs text-slate-400">
+                  {Math.round(trend.prediction.growth_probability * 100)}% growth probability
+                </span>
+              )}
+            </>
           )}
         </div>
 

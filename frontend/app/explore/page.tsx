@@ -41,6 +41,8 @@ interface HypothesisItem {
   qualified: boolean
   source_count: number
   first_seen: string | null
+  growth_direction: string | null
+  growth_probability: number | null
 }
 
 async function getHypotheses(): Promise<{ items: HypothesisItem[]; snapshotTime: string | null; todaySignals: number }> {
@@ -67,18 +69,20 @@ async function getHypotheses(): Promise<{ items: HypothesisItem[]; snapshotTime:
 
   const trendIds = snapshotItems.map(s => s.trend_id)
 
-  const [trendsRes, lifecycleRes, oppRes, hypothesesRes, evidenceRes] = await Promise.all([
+  const [trendsRes, lifecycleRes, oppRes, hypothesesRes, evidenceRes, predictionsRes] = await Promise.all([
     db.from('detected_trends').select('id, theme, first_seen').in('id', trendIds),
     db.from('trend_lifecycle_history').select('trend_id, lifecycle_stage, stage_confidence, acceleration_comparable').eq('snapshot_id', snapshot.id).in('trend_id', trendIds),
     db.from('trend_opportunities').select('trend_id, qualified').eq('snapshot_id', snapshot.id).in('trend_id', trendIds),
     db.from('problem_hypotheses').select('trend_id, hypothesis_title, hypothesis_summary, hypothesis_status, hypothesis_type, confidence').eq('snapshot_id', snapshot.id).in('trend_id', trendIds),
     db.from('trend_signals').select('trend_id, raw_signals!inner(source)').eq('snapshot_id', snapshot.id).in('trend_id', trendIds),
+    db.from('trend_predictions').select('trend_id, predicted_direction, growth_probability').eq('snapshot_id', snapshot.id).in('trend_id', trendIds),
   ])
 
   const trendMap = new Map((trendsRes.data || []).map(t => [t.id, t]))
   const lifecycleMap = new Map((lifecycleRes.data || []).map(l => [l.trend_id, l]))
   const oppMap = new Map((oppRes.data || []).map(o => [o.trend_id, o]))
   const hypothesisMap = new Map((hypothesesRes.data || []).map(h => [h.trend_id, h]))
+  const predictionMap = new Map((predictionsRes.data || []).map(p => [p.trend_id, p]))
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const evidenceRows = (evidenceRes.data || []) as any[]
@@ -97,6 +101,7 @@ async function getHypotheses(): Promise<{ items: HypothesisItem[]; snapshotTime:
     const lifecycle = lifecycleMap.get(item.trend_id)
     const opp = oppMap.get(item.trend_id)
     const hypothesis = hypothesisMap.get(item.trend_id)
+    const prediction = predictionMap.get(item.trend_id)
 
     const displayTitle = getHypothesisDisplayTitle(
       hypothesis?.hypothesis_title,
@@ -120,6 +125,8 @@ async function getHypotheses(): Promise<{ items: HypothesisItem[]; snapshotTime:
       qualified: opp?.qualified || false,
       source_count: sourceCountMap.get(item.trend_id)?.size || 0,
       first_seen: (trend as { id: string; theme: string; first_seen?: string } | undefined)?.first_seen || null,
+      growth_direction: prediction?.predicted_direction || null,
+      growth_probability: prediction?.growth_probability || null,
     }
   })
 
@@ -358,6 +365,15 @@ export default async function ExplorePage({
                   <div className="flex items-center gap-3 text-xs text-slate-400">
                     <span>{item.signal_count} signal{item.signal_count !== 1 ? 's' : ''}</span>
                     {item.source_count > 0 && <span>{item.source_count} source{item.source_count !== 1 ? 's' : ''}</span>}
+                    {item.growth_direction === 'breakout' && (
+                      <span className="text-orange-600 font-medium">Breakout</span>
+                    )}
+                    {item.growth_direction === 'accelerating' && (
+                      <span className="text-green-600 font-medium">Accelerating</span>
+                    )}
+                    {item.growth_direction === 'declining' && (
+                      <span className="text-red-500">Declining</span>
+                    )}
                   </div>
                 </Link>
               )
