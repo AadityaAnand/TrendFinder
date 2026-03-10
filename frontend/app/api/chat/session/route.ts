@@ -11,8 +11,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'trend_id and user_id are required' }, { status: 400 })
   }
 
-  // Verify user exists
-  const { data: user } = await db.from('user_profiles').select('id').eq('id', user_id).single()
+  // Verify user exists (auth user id is stored in external_id column)
+  const { data: user } = await db.from('user_profiles').select('id').eq('external_id', user_id).single()
   if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 })
 
   // Assign A/B variant by hashing user_id (deterministic alternation)
