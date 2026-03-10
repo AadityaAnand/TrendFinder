@@ -5,8 +5,7 @@ import { LiveSignalCounter } from '@/app/components/LiveSignalCounter'
 const STATUS_FILTERS = [
   { key: 'all', label: 'All' },
   { key: 'valid', label: 'Valid' },
-  { key: 'uncertain', label: 'Uncertain' },
-  { key: 'topic_only', label: 'Topic only' },
+  { key: 'uncertain', label: 'Emerging' },
 ]
 
 const AUDIENCE_FILTERS = [
@@ -144,7 +143,9 @@ export default async function ExplorePage({
 
   let filtered = selectedStatus === 'all'
     ? allItems
-    : allItems.filter(i => i.hypothesis_status === selectedStatus)
+    : selectedStatus === 'uncertain'
+      ? allItems.filter(i => i.hypothesis_status === 'uncertain' || i.hypothesis_status === 'topic_only')
+      : allItems.filter(i => i.hypothesis_status === selectedStatus)
 
   if (selectedType !== 'all') {
     filtered = filtered.filter(i => i.hypothesis_type === selectedType)
@@ -182,8 +183,7 @@ export default async function ExplorePage({
   }
 
   const validCount = allItems.filter(i => i.hypothesis_status === 'valid').length
-  const uncertainCount = allItems.filter(i => i.hypothesis_status === 'uncertain').length
-  const topicCount = allItems.filter(i => i.hypothesis_status === 'topic_only').length
+  const uncertainCount = allItems.filter(i => i.hypothesis_status === 'uncertain' || i.hypothesis_status === 'topic_only').length
 
   return (
     <div className="min-h-screen bg-white">
@@ -222,8 +222,7 @@ export default async function ExplorePage({
             const isActive = f.key === selectedStatus
             const count = f.key === 'all' ? allItems.length
               : f.key === 'valid' ? validCount
-              : f.key === 'uncertain' ? uncertainCount
-              : topicCount
+              : uncertainCount
             return (
               <Link
                 key={f.key}
@@ -319,18 +318,16 @@ export default async function ExplorePage({
         ) : (
           <div className="space-y-2">
             {filtered.map((item) => {
-              const isTopicOnly = item.hypothesis_status === 'topic_only'
-
               const statusColors: Record<string, string> = {
                 valid: 'text-indigo-600 bg-indigo-50',
                 uncertain: 'text-amber-600 bg-amber-50',
-                topic_only: 'text-slate-400 bg-slate-100',
+                topic_only: 'text-amber-600 bg-amber-50',
                 rejected: 'text-red-600 bg-red-50',
               }
               const statusLabel: Record<string, string> = {
                 valid: 'Valid',
-                uncertain: 'Uncertain',
-                topic_only: 'Topic only',
+                uncertain: 'Emerging',
+                topic_only: 'Emerging',
                 rejected: 'Rejected',
               }
 
@@ -338,7 +335,7 @@ export default async function ExplorePage({
                 <Link
                   key={item.trend_id}
                   href={`/trends/${item.trend_id}`}
-                  className={`block bg-white border border-slate-200 rounded-xl p-4 hover:border-slate-300 hover:shadow-sm transition group ${isTopicOnly ? 'opacity-60' : ''}`}
+                  className="block bg-white border border-slate-200 rounded-xl p-4 hover:border-slate-300 hover:shadow-sm transition group"
                 >
                   <div className="flex items-start justify-between gap-3 mb-1">
                     <h3 className="text-sm font-semibold text-slate-900 group-hover:text-indigo-600 transition-colors leading-snug">
@@ -354,7 +351,7 @@ export default async function ExplorePage({
                     </div>
                   </div>
 
-                  {item.hypothesis_summary && !isTopicOnly && (
+                  {item.hypothesis_summary && (
                     <p className="text-xs text-slate-600 leading-relaxed line-clamp-2 mb-2">{item.hypothesis_summary}</p>
                   )}
 

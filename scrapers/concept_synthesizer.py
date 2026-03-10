@@ -146,7 +146,7 @@ def synthesize_concept(
 
     demand_text = '\n'.join(f"- {p}" for p in demand_phrases[:5]) if demand_phrases else '- No demand signals detected'
 
-    prompt = f"""You are analyzing developer community signals to identify a MARKET CONCEPT — a coherent product opportunity or problem space.
+    prompt = f"""You are analyzing online community signals to understand what people are discussing and why it matters.
 
 Raw cluster name: "{trend_name}"
 Sources: {source_summary}
@@ -157,25 +157,23 @@ Signals:
 Demand phrases found:
 {demand_text}
 
-Your job: Synthesize these signals into a coherent MARKET CONCEPT. This is not a topic label — it's a specific, buildable opportunity.
+Your job: Synthesize these signals into a clear, descriptive CONCEPT NAME and summary. Describe what is being discussed, the key themes, and why people care about this topic right now. Do NOT judge whether this is a "valid problem" — just describe what's happening.
 
 Respond in this exact JSON format (no markdown, no code blocks, just raw JSON):
 {{
-  "concept_name": "Short market-level name, 3-8 words. Examples: 'Self-hosted AI code review tools', 'Database migration automation for PostgreSQL', 'Privacy-first analytics alternatives'. NOT just a topic like 'React' or 'AI'.",
-  "problem_statement": "One sentence: [Who] struggles with [what problem] because [why]. Ground this in the evidence above.",
-  "affected_persona": ["specific persona 1", "specific persona 2"],
-  "category": "devtools|infrastructure|ai-ml|web|data|security|other",
-  "is_product_opportunity": true,
+  "concept_name": "Short descriptive name, 3-8 words. Examples: 'Self-hosted AI code review tools', 'Carbon capture technology debate', 'Privacy-first analytics alternatives'. NOT just a single word like 'React' or 'AI'.",
+  "problem_statement": "One sentence summarizing the core discussion: what are people talking about, what questions or needs are emerging, and why now? Ground this in the evidence above.",
+  "affected_persona": ["specific group 1", "specific group 2"],
+  "category": "devtools|infrastructure|ai-ml|web|data|security|climate|policy|other",
   "confidence": 0.7,
   "supporting_evidence": ["evidence bullet 1 citing a specific signal above", "evidence bullet 2"]
 }}
 
 Rules:
-- concept_name MUST be specific and market-oriented, not a generic topic label
-- problem_statement MUST reference the evidence — don't invent problems
-- affected_persona should be specific (e.g., "backend engineers migrating from MongoDB") not generic ("developers")
-- is_product_opportunity: true if someone could build a product/tool/service around this
-- confidence: 0.0-1.0 based on evidence strength
+- concept_name MUST be specific and descriptive, not a generic topic label
+- problem_statement MUST reference the evidence — don't invent themes not present in the signals
+- affected_persona should be specific groups discussing this (e.g., "backend engineers migrating from MongoDB", "climate policy researchers") not generic ("developers", "people")
+- confidence: 0.0-1.0 based on evidence strength and clarity of the discussion
 - Max 3 personas, max 4 supporting evidence bullets"""
 
     try:
@@ -205,7 +203,7 @@ Rules:
             'problem_statement': str(result.get('problem_statement', ''))[:500],
             'affected_persona': (result.get('affected_persona') or [])[:3],
             'category': result.get('category', 'other'),
-            'is_product_opportunity': bool(result.get('is_product_opportunity', False)),
+            'is_product_opportunity': True,  # Always true — let the user decide
             'confidence': max(0.0, min(1.0, float(result.get('confidence', 0.5)))),
             'supporting_evidence': [str(e)[:200] for e in (result.get('supporting_evidence') or [])[:4]],
         }

@@ -455,13 +455,13 @@ def get_hypothesis(supabase: Client, snapshot_id: str, trend_id: str) -> Optiona
 def check_hypothesis_gate(hypothesis: Optional[dict]) -> tuple[bool, list[str]]:
     if not hypothesis:
         return False, ['no_hypothesis']
-    # Accept 'valid' or 'pending' — LLMs sometimes produce 'pending' for legitimate hypotheses.
-    # Only hard-reject known-bad statuses like 'invalid' or 'rejected'.
-    valid_statuses = {'valid', 'pending'}
+    # Accept any status with a hypothesis summary — let all trends through if they have
+    # evidence. Only hard-reject explicitly 'invalid' or 'rejected' statuses.
+    rejected_statuses = {'invalid', 'rejected'}
     status = hypothesis.get('hypothesis_status', 'missing')
-    if status not in valid_statuses:
+    if status in rejected_statuses:
         return False, [f'hypothesis_status_{status}']
-    threshold = 0.25 if DIAGNOSTIC_MODE else MIN_HYPOTHESIS_CONFIDENCE
+    threshold = 0.1 if DIAGNOSTIC_MODE else 0.1  # Low threshold — let signal strength gates decide
     if (hypothesis.get('confidence') or 0) < threshold:
         return False, ['hypothesis_low_confidence']
     return True, []

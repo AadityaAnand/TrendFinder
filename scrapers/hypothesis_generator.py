@@ -133,8 +133,8 @@ def get_existing_hypothesis(snapshot_id: str, trend_id: str) -> Optional[dict]:
 
 def _generate_fallback_summary(trend_name: str, signals: list[dict], demand_evidence: list[dict]) -> str:
     """
-    Build a genuine, readable summary from raw signals when LLM gate is not passed.
-    Never returns the 'Insufficient evidence diversity...' placeholder.
+    Build a genuine, readable narrative summary from raw signals.
+    Extracts themes, sentiment/intent, and quotes from top signals.
     """
     top = sorted(signals, key=lambda s: s.get('score', 0), reverse=True)[:5]
     sources = list(dict.fromkeys(s.get('source', '') for s in top if s.get('source')))
@@ -154,16 +154,51 @@ def _generate_fallback_summary(trend_name: str, signals: list[dict], demand_evid
     top_terms = [t for t, _ in sorted(term_counts.items(), key=lambda x: -x[1])[:4]]
 
     source_str = ', '.join(sources) if sources else 'one community'
-    terms_str = ', '.join(top_terms) if top_terms else trend_name
-    demand_note = (
-        f" {len(demand_evidence)} signal(s) show active demand."
-        if demand_evidence else ""
-    )
 
-    return (
-        f"{len(signals)} discussion(s) on {source_str} around {terms_str}. "
-        f"This hasn't spread across multiple platforms yet, but the conversation is active.{demand_note}"
-    )
+    # Detect discussion intent from titles
+    question_signals = [s for s in top if '?' in s.get('title', '') or s.get('title', '').lower().startswith(('how', 'why', 'what', 'is '))]
+    frustration_words = {'frustrat', 'problem', 'issue', 'broken', 'slow', 'pain', 'struggle', 'bug', 'fail'}
+    frustration_signals = [s for s in top if any(w in s.get('title', '').lower() for w in frustration_words)]
+    sharing_words = {'launch', 'released', 'introducing', 'built', 'open source', 'announce'}
+    sharing_signals = [s for s in top if any(w in s.get('title', '').lower() for w in sharing_words)]
+
+    # Build narrative parts
+    parts = []
+
+    # Opening: signal count and sources
+    parts.append(f"There are {len(signals)} active discussion(s) on {source_str}.")
+
+    # Quote the top signal for flavor
+    if top and top[0].get('title'):
+        best = top[0]
+        score_note = f" ({best.get('score', 0)} points)" if best.get('score', 0) else ""
+        parts.append(f'The most engaged post is "{best["title"][:120]}"{score_note}.')
+
+    # Describe discussion intent
+    if question_signals:
+        q_title = question_signals[0].get('title', '')[:100]
+        parts.append(f'People are asking questions like "{q_title}".')
+    elif frustration_signals:
+        parts.append('The discussion reflects frustration or pain points that people are experiencing.')
+    elif sharing_signals:
+        parts.append('The conversation is driven by new launches, tools, or announcements being shared.')
+    else:
+        terms_str = ', '.join(top_terms) if top_terms else trend_name
+        parts.append(f'Key themes include {terms_str}.')
+
+    # Second signal quote if available
+    if len(top) >= 2 and top[1].get('title'):
+        parts.append(f'Another notable post: "{top[1]["title"][:100]}".')
+
+    # Demand note
+    if demand_evidence:
+        parts.append(f'{len(demand_evidence)} signal(s) show people actively looking for solutions or alternatives.')
+
+    # Source diversity note
+    if len(sources) < 2:
+        parts.append("The conversation hasn't spread across multiple platforms yet, which could mean it's still early.")
+
+    return ' '.join(parts)
 
 
 def check_topic_only_deterministic(trend_name: str, evidence: list[dict]) -> tuple[bool, list[str]]:
@@ -305,32 +340,32 @@ def generate_hypothesis_llm(
         days = lifecycle.get('days_seen', 0)
         stage_info = f"\nLifecycle: {stage} (confidence: {conf:.0%}, {days} days tracked)"
 
-    prompt = f"""You are analyzing developer community signals to identify real PROBLEMS people face.
+    prompt = f"""You are analyzing online community signals to understand what people are discussing and identify potential opportunities.
 
 Topic cluster: "{trend_name}"{stage_info}
 
-Evidence signals from developer communities:
+Evidence signals:
 {evidence_text}
 
 Demand signals (people expressing needs/frustrations):
 {demand_text}
 
-Your job: Transform this cluster into a PROBLEM HYPOTHESIS — a statement about a real pain point that builders could address.
+Your job: Synthesize these signals into a clear HYPOTHESIS about what's happening and why it matters. Describe the key discussion themes, recurring questions or needs, and what opportunity might exist for builders.
 
 Respond in this exact JSON format (no markdown, no code blocks, just raw JSON):
 {{
-  "hypothesis_title": "Short market-problem statement, e.g. 'Teams can't track AI tool usage costs' — NOT a topic label",
-  "hypothesis_summary": "3-5 sentence plain English explanation of the problem, who faces it, and why it matters now. Reference the evidence.",
-  "who_it_affects": ["persona 1", "persona 2"],
-  "pain_signals": ["pain bullet 1 grounded in evidence", "pain bullet 2", "pain bullet 3"],
+  "hypothesis_title": "Short descriptive statement about what's happening, e.g. 'Teams struggling to track AI tool usage costs' or 'Growing debate around carbon capture feasibility'",
+  "hypothesis_summary": "3-5 sentence plain English explanation of what people are discussing, who cares about it, and why it matters now. Reference the evidence.",
+  "who_it_affects": ["specific group 1", "specific group 2"],
+  "pain_signals": ["key theme or need grounded in evidence", "theme 2", "theme 3"],
   "confidence_assessment": "high|medium|low"
 }}
 
 Rules:
-- hypothesis_title MUST be a problem statement, NOT a topic label. Bad: "React Server Components". Good: "Developers struggle with React Server Component caching and hydration errors"
-- pain_signals MUST be derived from the evidence titles/snippets above. Do NOT invent pain points not supported by the evidence.
-- who_it_affects should be specific personas (e.g., "backend developers using PostgreSQL", not "developers")
-- If the evidence is mostly opinion/narrative with no clear problem, set confidence_assessment to "low"
+- hypothesis_title should describe what's happening, not just name a topic. Bad: "React Server Components". Good: "Developers struggle with React Server Component caching and hydration errors"
+- pain_signals MUST be derived from the evidence titles/snippets above. They can be problems, questions, debates, or needs — whatever the signals show. Do NOT invent themes not in the evidence.
+- who_it_affects should be specific groups (e.g., "backend developers using PostgreSQL", "climate policy researchers"), not generic ("developers", "people")
+- confidence_assessment reflects how clear and coherent the signals are, not whether it's a "valid problem"
 - Max 6 pain signals, max 3 personas
 - Keep all text concise"""
 
@@ -509,7 +544,7 @@ def run_hypothesis_generation() -> dict:
     snapshot = get_latest_snapshot()
     if not snapshot:
         logger.error("No snapshot found")
-        return {'valid': 0, 'uncertain': 0, 'topic_only': 0, 'unchanged': 0, 'failed': 0, 'total': 0}
+        return {'valid': 0, 'uncertain': 0, 'unchanged': 0, 'failed': 0, 'total': 0}
 
     snapshot_id = snapshot['id']
     logger.info(f"Using snapshot: {snapshot_id}")
@@ -518,9 +553,9 @@ def run_hypothesis_generation() -> dict:
     logger.info(f"Found {len(trends)} trends in snapshot")
 
     if not trends:
-        return {'valid': 0, 'uncertain': 0, 'topic_only': 0, 'unchanged': 0, 'failed': 0, 'total': 0}
+        return {'valid': 0, 'uncertain': 0, 'unchanged': 0, 'failed': 0, 'total': 0}
 
-    stats = {'valid': 0, 'uncertain': 0, 'topic_only': 0, 'unchanged': 0, 'failed': 0}
+    stats = {'valid': 0, 'uncertain': 0, 'unchanged': 0, 'failed': 0}
 
     for trend in trends:
         trend_id = trend['trend_id']
@@ -579,18 +614,25 @@ def run_hypothesis_generation() -> dict:
             continue
         # --- End creator branch ---
 
-        is_topic_only, topic_reasons = check_topic_only_deterministic(trend_name, evidence)
-        if is_topic_only:
-            logger.info(f"Topic-only: {trend_name} ({', '.join(topic_reasons)})")
+        # Note: check_topic_only_deterministic flags are used as confidence signals,
+        # not as a hard gate. All trends get a summary — the user decides what's valuable.
+        is_low_signal, low_signal_reasons = check_topic_only_deterministic(trend_name, evidence)
+        if is_low_signal:
+            logger.info(f"Low-signal cluster: {trend_name} ({', '.join(low_signal_reasons)}) — generating narrative summary")
+            # Still generate a useful fallback summary instead of blocking
+            demand_evidence_early = []
+            for e in evidence:
+                if DEMAND_REGEX.search(e.get('title', '')):
+                    demand_evidence_early.append({'title': e.get('title', ''), 'source': e.get('source', ''), 'url': e.get('url', '')})
             hypothesis = {
                 'hypothesis_title': trend_name,
-                'hypothesis_summary': f"This appears to be a topic or narrative rather than a problem signal. Reasons: {'; '.join(topic_reasons)}",
+                'hypothesis_summary': _generate_fallback_summary(trend_name, evidence, demand_evidence_early),
                 'who_it_affects': [],
                 'pain_signals': [],
-                'demand_evidence': [],
+                'demand_evidence': demand_evidence_early,
             }
-            save_hypothesis(snapshot_id, trend_id, hypothesis, evidence_hash, 'topic_only', 0.0, topic_reasons, False)
-            stats['topic_only'] += 1
+            save_hypothesis(snapshot_id, trend_id, hypothesis, evidence_hash, 'uncertain', 0.15, low_signal_reasons, False)
+            stats['uncertain'] += 1
             continue
 
         demand_evidence = []
@@ -661,7 +703,7 @@ def run_hypothesis_generation() -> dict:
 
     logger.info("=" * 60)
     logger.info("RESULTS")
-    logger.info(f"Valid: {stats['valid']}, Uncertain: {stats['uncertain']}, Topic-only: {stats['topic_only']}")
+    logger.info(f"Valid: {stats['valid']}, Uncertain: {stats['uncertain']}")
     logger.info(f"Unchanged: {stats['unchanged']}, Failed: {stats['failed']}")
     logger.info(f"Total processed: {len(trends)}")
 

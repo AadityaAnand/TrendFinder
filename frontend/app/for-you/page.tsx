@@ -259,7 +259,7 @@ function ForYouContent() {
                 const isExpanded = expandedId === opp.id
                 const title = h?.title && h.title.length > 10 ? h.title : opp.display_name
                 const summary = h?.summary || opp.why_now || null
-                const isPending = !h || h.status === 'uncertain' || h.status === 'topic_only'
+                const isPending = !h || h.status === 'uncertain'
 
                 return (
                   <article key={opp.id} className="bg-white border border-slate-200 rounded-xl p-5 hover:border-slate-300 hover:shadow-sm transition">
