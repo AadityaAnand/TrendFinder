@@ -19,7 +19,8 @@ function detectIntent(message: string): IntentType {
   if (/\b(top|best|most (popular|engaged|upvoted|viewed|mentioned)|highest)\b/.test(lower)) return 'top_signals'
   if (/\b(source|platform|where|which site|subreddit|forum|community)\b/.test(lower)) return 'source_breakdown'
   if (/\b(when|timeline|history|first|started|began|date|oldest|earliest|latest)\b/.test(lower)) return 'timeline'
-  if (/\b(who|person|people|creator|developer|persona|audience|user|engineer)\b/.test(lower)) return 'persona'
+  if (/\b(who|person|people|creator|developer|persona|audience|user|engineer|target|affected)\b/.test(lower)) return 'persona'
+  if (/\b(this for|meant for|aimed at|designed for)\b/.test(lower)) return 'persona'
   return 'recent'
 }
 
@@ -143,6 +144,15 @@ async function handleTimeline(trendId: string): Promise<EvidenceResult> {
   }
 }
 
+// Safe JSON parse for columns stored as JSON strings
+function safeParseArray(val: unknown): unknown[] {
+  if (Array.isArray(val)) return val
+  if (typeof val === 'string') {
+    try { const parsed = JSON.parse(val); return Array.isArray(parsed) ? parsed : [] } catch { return [] }
+  }
+  return []
+}
+
 async function handlePersona(trendId: string): Promise<EvidenceResult> {
   const db = getServerSupabase()
   const { data: brief } = await db
@@ -163,29 +173,42 @@ async function handlePersona(trendId: string): Promise<EvidenceResult> {
 
   const lines: string[] = []
 
-  const roles = brief?.persona_roles || (hypothesis?.who_it_affects ? (
-    Array.isArray(hypothesis.who_it_affects) ? hypothesis.who_it_affects : [hypothesis.who_it_affects]
-  ) : [])
+  // persona_roles is a native array; who_it_affects is stored as JSON string
+  const roles = safeParseArray(brief?.persona_roles).length
+    ? safeParseArray(brief?.persona_roles)
+    : safeParseArray(hypothesis?.who_it_affects)
 
   if (roles.length) {
-    lines.push(`**Who is affected:**\n${roles.map((r: string) => `- ${r}`).join('\n')}`)
+    lines.push(`**Who is affected:**\n${roles.map((r) => `- ${r}`).join('\n')}`)
   }
 
-  const painPoints = brief?.persona_pain_points || []
+  // persona_pain_points is stored as JSON string
+  const painPoints = safeParseArray(brief?.persona_pain_points)
   if (painPoints.length) {
     lines.push(`\n**Pain points:**`)
-    painPoints.slice(0, 4).forEach((p: { phrase: string; quote?: string; source?: string }) => {
-      lines.push(`- ${p.phrase}${p.quote ? ` ("${p.quote}" — ${p.source || 'signal'})` : ''}`)
+    painPoints.slice(0, 4).forEach((p: unknown) => {
+      const pp = p as { phrase?: string; quote?: string; source?: string }
+      if (pp.phrase) {
+        lines.push(`- ${pp.phrase}${pp.quote ? ` ("${pp.quote}" — ${pp.source || 'signal'})` : ''}`)
+      }
     })
-  } else if (hypothesis?.pain_signals) {
-    const pains = Array.isArray(hypothesis.pain_signals) ? hypothesis.pain_signals : []
+  } else {
+    const pains = safeParseArray(hypothesis?.pain_signals)
     if (pains.length) {
-      lines.push(`\n**Pain signals:**\n${pains.slice(0, 5).map((p: string) => `- ${p}`).join('\n')}`)
+      lines.push(`\n**Pain signals:**\n${pains.slice(0, 5).map((p) => `- ${p}`).join('\n')}`)
+    }
+  }
+
+  if (!lines.length) {
+    return {
+      content: "We haven't identified specific personas for this trend yet. The discussions are still early — you can look at the top signals for clues about who's talking about this.",
+      citations: [],
+      confidence: 0.3,
     }
   }
 
   return {
-    content: lines.length ? lines.join('\n') : "I don't have persona data for this trend yet.",
+    content: lines.join('\n'),
     citations: [],
     confidence: 0.9,
   }
