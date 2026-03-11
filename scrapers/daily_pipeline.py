@@ -369,6 +369,10 @@ def run_pipeline(skip_scrapers: bool = False, force: bool = False, diagnostic: b
         if run_scraper('deduplication'):
             stages_completed.append('deduplication')
 
+        # Event-based dedup: group signals about the same real-world event
+        if run_scraper('event_deduplicator'):
+            stages_completed.append('event_deduplication')
+
         # Novelty scoring runs before trend detection so recurring posts get downweighted
         if run_scraper('novelty_scorer'):
             stages_completed.append('novelty_scoring')

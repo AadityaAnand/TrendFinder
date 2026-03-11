@@ -116,7 +116,7 @@ def get_canonical_signals_with_embeddings(
     cutoff = datetime.now(timezone.utc) - timedelta(days=lookback_days)
 
     response = supabase.table('raw_signals') \
-        .select('id, title, source, score, created_at') \
+        .select('id, title, source, score, created_at, event_group_id') \
         .gte('created_at', cutoff.isoformat()) \
         .order('created_at', desc=True) \
         .execute()
@@ -431,10 +431,32 @@ def calculate_cluster_momentum(
     if not strong_signals:
         strong_signals = signals
 
-    weighted_scores = []
+    # Calculate weights with event-group discount:
+    # Signals sharing an event_group_id are about the same real-world event.
+    # Only the strongest signal in each group gets full weight; others are discounted.
+    raw_weights = []
     for signal in strong_signals:
         weight = calculate_signal_weight(signal, p90_params, now)
-        weighted_scores.append(weight)
+        raw_weights.append((signal, weight))
+
+    # Group by event_group_id
+    event_groups: dict[str, list[tuple]] = defaultdict(list)
+    no_group: list[float] = []
+    for signal, weight in raw_weights:
+        eg_id = signal.get('event_group_id')
+        if eg_id:
+            event_groups[eg_id].append(weight)
+        else:
+            no_group.append(weight)
+
+    # For each event group, keep max weight + diminished contribution from rest
+    weighted_scores = list(no_group)
+    for eg_id, weights in event_groups.items():
+        weights_sorted = sorted(weights, reverse=True)
+        # Full weight for strongest signal, 1/N for each additional
+        weighted_scores.append(weights_sorted[0])
+        for i, w in enumerate(weights_sorted[1:], start=2):
+            weighted_scores.append(w / i)
 
     engagement_score = float(np.mean(weighted_scores)) if weighted_scores else 0
 
@@ -462,15 +484,22 @@ def calculate_cluster_momentum(
     # Composite momentum: 50% engagement + 30% source diversity + 20% demand density
     momentum = 0.5 * engagement_score + 0.3 * source_diversity_factor + 0.2 * demand_density
 
+    # Effective signal count: event groups count as 1 each
+    event_group_ids = set(s.get('event_group_id') for s in signals if s.get('event_group_id'))
+    signals_in_groups = sum(1 for s in signals if s.get('event_group_id'))
+    effective_count = (len(signals) - signals_in_groups) + len(event_group_ids)
+
     return {
         'momentum': float(momentum),
         'top3_mean': float(top3_mean),
-        'signal_count': len(signals),
+        'signal_count': effective_count,
+        'raw_signal_count': len(signals),
         'strong_evidence_count': len(strong_signals),
         'topk_used': top_k,
         'source_diversity_factor': float(source_diversity_factor),
         'demand_density': float(demand_density),
         'demand_signal_count': demand_count,
+        'event_groups_in_cluster': len(event_group_ids),
     }
 
 
