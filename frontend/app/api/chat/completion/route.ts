@@ -142,7 +142,7 @@ export async function POST(request: Request) {
   }
 
   // Content / injection check
-  const injectionPatterns = [/ignore previous (instructions|prompt)/i, /system:/i, /<\|im_start\|>/i, /\[INST\]/i]
+  const injectionPatterns = [/ignore previous (instructions|prompt)/i, /(?:^|\n)\s*system:\s*(ignore|override|forget|you are|new instructions)/i, /<\|im_start\|>/i, /\[INST\]/i]
   if (injectionPatterns.some(p => p.test(message))) {
     return Response.json({ error: 'Invalid message content' }, { status: 400 })
   }

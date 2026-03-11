@@ -60,8 +60,8 @@ def _calculate_engagement_velocity(signals: list[dict]) -> float:
             yesterday_score += score
 
     if yesterday_score == 0:
-        # No yesterday data — if today has data, treat as new (positive signal)
-        return 0.3 if today_score > 0 else 0.0
+        # No yesterday data — scale by today's absolute score, cap at 0.6
+        return min(0.6, today_score / 30.0) if today_score > 0 else 0.0
 
     return (today_score - yesterday_score) / yesterday_score
 

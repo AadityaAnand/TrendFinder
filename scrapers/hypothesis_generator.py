@@ -685,7 +685,7 @@ def run_hypothesis_generation() -> dict:
         elif llm_confidence == 'low':
             confidence = max(confidence - 0.1, 0.0)
 
-        if is_uncertain or confidence < 0.4:
+        if confidence < 0.4:
             status = 'uncertain'
         else:
             status = 'valid'

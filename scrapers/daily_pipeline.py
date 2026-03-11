@@ -369,6 +369,10 @@ def run_pipeline(skip_scrapers: bool = False, force: bool = False, diagnostic: b
         if run_scraper('deduplication'):
             stages_completed.append('deduplication')
 
+        # Novelty scoring runs before trend detection so recurring posts get downweighted
+        if run_scraper('novelty_scorer'):
+            stages_completed.append('novelty_scoring')
+
         if run_scraper('trend_detector'):
             stages_completed.append('trend_detection')
 
@@ -394,10 +398,7 @@ def run_pipeline(skip_scrapers: bool = False, force: bool = False, diagnostic: b
         if run_scraper('trajectory_updater'):
             stages_completed.append('trajectory_update')
 
-        # Phase 9d: Novelty scoring, pain phrases, predictions, why-now
-        if run_scraper('novelty_scorer'):
-            stages_completed.append('novelty_scoring')
-
+        # Phase 9d: Pain phrases, predictions, why-now
         if run_scraper('pain_phrase_extractor'):
             stages_completed.append('pain_phrase_extraction')
 

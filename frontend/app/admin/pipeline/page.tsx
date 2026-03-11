@@ -61,6 +61,10 @@ export default async function PipelineDashboard() {
       : Promise.resolve({ data: [] }),
   ])
 
+  if (runsRes.error) console.warn('pipeline_runs query failed:', runsRes.error.message)
+  if (scraperHealthRes.error) console.warn('scraper_health query failed:', scraperHealthRes.error.message)
+  if (gateLogRes && 'error' in gateLogRes && gateLogRes.error) console.warn('pipeline_qualification_log query failed:', (gateLogRes as { error: { message: string } }).error.message)
+
   const runs = runsRes.data ?? []
   const scrapers = scraperHealthRes.data ?? []
   const signals = signalsRes.data ?? []

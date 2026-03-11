@@ -67,7 +67,8 @@ async function handleSourceBreakdown(trendId: string): Promise<EvidenceResult> {
   const { data } = await db
     .from('trend_signals')
     .select('raw_signals!inner(source)')
-    .eq('trend_id', trendId) as { data: any[] | null }
+    .eq('trend_id', trendId)
+    .limit(500) as { data: any[] | null }
 
   const counts: Record<string, number> = {}
   for (const row of (data || [])) {

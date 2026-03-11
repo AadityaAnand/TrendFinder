@@ -12,8 +12,8 @@ def cleanup_trends():
     print("Cleaning up old trends and explanations...")
 
     try:
-        result = supabase.table('trend_explanations').delete().neq('id', '00000000-0000-0000-0000-000000000000').execute()
-        print(f"✓ Deleted trend explanations")
+        result = supabase.table('opportunity_explanations').delete().neq('id', '00000000-0000-0000-0000-000000000000').execute()
+        print(f"✓ Deleted opportunity explanations")
 
         result = supabase.table('detected_trends').delete().neq('id', '00000000-0000-0000-0000-000000000000').execute()
         print(f"✓ Deleted detected trends")

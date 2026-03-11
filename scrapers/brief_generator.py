@@ -776,6 +776,10 @@ def _generate_creator_brief(
     """
     signal_quotes, source_breakdown = get_top_signal_quotes(signals)
 
+    # Phase 9d: Load prediction and pain phrase data for creator briefs
+    prediction = get_prediction(supabase, snapshot_id, trend_id)
+    pain_phrases_data = get_pain_phrases(supabase, snapshot_id, trend_id)
+
     # Section A: Creator-focused synthesis
     synthesis = _build_creator_synthesis(hypothesis, signals, groq_client)
 
@@ -875,6 +879,14 @@ def _generate_creator_brief(
         # Signal evidence
         'signal_quotes': json.dumps(signal_quotes),
         'source_breakdown': json.dumps(source_breakdown),
+
+        # Phase 9d: Prediction data (why_now_prediction populated by why_now_generator stage)
+        'growth_indicator': prediction.get('predicted_direction', 'steady') if prediction else 'steady',
+        'why_now_prediction': None,
+        'pain_phrases': json.dumps([
+            {'phrase': p['phrase'], 'type': p['phrase_type'], 'frequency': p.get('frequency', 1)}
+            for p in pain_phrases_data
+        ]) if pain_phrases_data else None,
 
         # Auditability
         'llm_prompts': None,

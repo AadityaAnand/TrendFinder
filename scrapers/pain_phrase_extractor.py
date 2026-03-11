@@ -128,12 +128,23 @@ def get_trend_signals(supabase: Client, snapshot_id: str, trend_id: str, limit: 
 
     signal_ids = [s['signal_id'] for s in sig_resp.data][:limit * 2]
 
+    # Prefer high-novelty signals to avoid recurring low-value posts
     details = supabase.table('raw_signals') \
-        .select('id, title, url, source, content') \
+        .select('id, title, url, source, content, novelty_score') \
         .in_('id', signal_ids) \
+        .gte('novelty_score', 0.3) \
         .order('score', desc=True) \
         .limit(limit) \
         .execute()
+
+    # Fallback: if novelty filter excludes everything (scores not yet populated), retry without it
+    if not details.data:
+        details = supabase.table('raw_signals') \
+            .select('id, title, url, source, content') \
+            .in_('id', signal_ids) \
+            .order('score', desc=True) \
+            .limit(limit) \
+            .execute()
 
     return details.data or []
 

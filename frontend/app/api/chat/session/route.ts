@@ -15,12 +15,13 @@ export async function POST(request: Request) {
   const { data: user } = await db.from('user_profiles').select('id').eq('external_id', user_id).single()
   if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 })
 
-  // Assign A/B variant by hashing user_id (deterministic alternation)
-  const { count } = await db
-    .from('opportunity_chat_sessions')
-    .select('id', { count: 'exact', head: true })
-    .eq('user_id', user_id)
-  const variant = ((count || 0) % 2 === 0) ? 'prompt_v1' : 'prompt_v2'
+  // Assign A/B variant by stable hash of user_id (deterministic across sessions)
+  let hash = 0
+  for (let i = 0; i < user_id.length; i++) {
+    hash = ((hash << 5) - hash) + user_id.charCodeAt(i)
+    hash |= 0
+  }
+  const variant = (Math.abs(hash) % 2 === 0) ? 'prompt_v1' : 'prompt_v2'
 
   const { data: session, error } = await db
     .from('opportunity_chat_sessions')

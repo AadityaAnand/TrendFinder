@@ -110,7 +110,7 @@ def generate_why_now(
         )
 
     # Priority 2: Acceleration
-    if acceleration is not None and acceleration > 0.2 and 'breakout' not in parts[0] if parts else True:
+    if acceleration is not None and acceleration > 0.2 and (not parts or 'breakout' not in parts[0]):
         parts.append(
             "Growth is accelerating — the rate of new signals is increasing faster than before, "
             "suggesting this hasn't peaked yet."

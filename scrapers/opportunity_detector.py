@@ -264,9 +264,10 @@ def get_supporting_signals(supabase: Client, snapshot_id: str, trend_id: str, li
 
 def check_persistence_gate(lifecycle: Optional[dict]) -> tuple[bool, Optional[str]]:
     """Trend must appear in >=2 distinct days OR show breakout acceleration."""
+    days_threshold = 1 if DIAGNOSTIC_MODE else 2
     days_seen = lifecycle.get('days_seen', 0) if lifecycle else 0
 
-    if days_seen >= 2:
+    if days_seen >= days_threshold:
         return True, None
 
     # Breakout exception: momentum jump >2x in 24 hours
@@ -280,7 +281,8 @@ def check_persistence_gate(lifecycle: Optional[dict]) -> tuple[bool, Optional[st
 
 
 def check_evidence_gate(artifact_count: int) -> tuple[bool, Optional[str]]:
-    if artifact_count < MIN_INDEPENDENT_ARTIFACTS:
+    min_artifacts = 1 if DIAGNOSTIC_MODE else MIN_INDEPENDENT_ARTIFACTS
+    if artifact_count < min_artifacts:
         return False, 'insufficient_independent_evidence'
     return True, None
 
@@ -461,7 +463,7 @@ def check_hypothesis_gate(hypothesis: Optional[dict]) -> tuple[bool, list[str]]:
     status = hypothesis.get('hypothesis_status', 'missing')
     if status in rejected_statuses:
         return False, [f'hypothesis_status_{status}']
-    threshold = 0.1 if DIAGNOSTIC_MODE else 0.1  # Low threshold — let signal strength gates decide
+    threshold = 0.05 if DIAGNOSTIC_MODE else 0.1
     if (hypothesis.get('confidence') or 0) < threshold:
         return False, ['hypothesis_low_confidence']
     return True, []

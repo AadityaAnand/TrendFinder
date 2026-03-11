@@ -194,11 +194,11 @@ def compute_prediction(
     # Clamp to [0, 1]
     growth_probability = max(0.0, min(1.0, score))
 
-    # Determine direction
-    if growth_rate is not None and growth_rate > 0.5 and (acceleration is None or acceleration >= 0):
-        direction = 'accelerating'
-    elif growth_rate is not None and growth_rate > 1.5 and source_count >= 3:
+    # Determine direction (check breakout first — it's a superset of accelerating)
+    if growth_rate is not None and growth_rate > 1.5 and source_count >= 3:
         direction = 'breakout'
+    elif growth_rate is not None and growth_rate > 0.5 and (acceleration is None or acceleration >= 0):
+        direction = 'accelerating'
     elif growth_rate is not None and growth_rate < -0.2:
         direction = 'declining'
     else:

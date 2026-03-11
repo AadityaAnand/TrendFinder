@@ -207,9 +207,8 @@ def classify_signals_demand(
             if content_type in ('technical', 'product', 'other'):
                 layer2_candidates.append(sig)
 
-    # Layer 2: LLM batch classification (only if there are layer1 demand hits in this group)
-    has_any_demand = any(r['layer1_match'] for r in results)
-    if use_llm and groq_client and has_any_demand and layer2_candidates:
+    # Layer 2: LLM batch classification for signals that Layer 1 missed
+    if use_llm and groq_client and layer2_candidates:
         # Process in batches of 10
         for i in range(0, len(layer2_candidates), 10):
             batch = layer2_candidates[i:i+10]

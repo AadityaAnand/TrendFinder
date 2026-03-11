@@ -1,7 +1,7 @@
 import os
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 from dotenv import load_dotenv
@@ -198,22 +198,50 @@ def compute_trajectory_summary(trajectory: list[dict]) -> dict:
     acceleration = None
 
     if len(trajectory) >= 2:
-        # Get signal counts for growth rate calculation
         recent = trajectory[-1]
         current_signals = recent.get('signal_count') or 0
+        recent_ts = recent.get('timestamp', '')
 
-        # Find point ~7 days ago (or closest)
+        # Find points closest to 7 and 14 days ago using actual timestamps
         prev_signals = None
         prev_prev_signals = None
-        for i in range(len(trajectory) - 2, -1, -1):
-            point = trajectory[i]
-            sc = point.get('signal_count')
-            if sc is not None and sc > 0:
-                if prev_signals is None:
-                    prev_signals = sc
-                elif prev_prev_signals is None:
-                    prev_prev_signals = sc
-                    break
+
+        try:
+            recent_dt = datetime.fromisoformat(recent_ts.replace('Z', '+00:00'))
+            target_7d = recent_dt - timedelta(days=7)
+            target_14d = recent_dt - timedelta(days=14)
+            max_drift = 5 * 86400  # accept points within 5 days of target
+
+            best_7d = None   # (signal_count, abs_diff_seconds)
+            best_14d = None
+
+            for p in trajectory[:-1]:
+                pts = p.get('timestamp', '')
+                sc = p.get('signal_count')
+                if not pts or sc is None or sc <= 0:
+                    continue
+                pdt = datetime.fromisoformat(pts.replace('Z', '+00:00'))
+                diff_7 = abs((pdt - target_7d).total_seconds())
+                diff_14 = abs((pdt - target_14d).total_seconds())
+                if best_7d is None or diff_7 < best_7d[1]:
+                    best_7d = (sc, diff_7)
+                if best_14d is None or diff_14 < best_14d[1]:
+                    best_14d = (sc, diff_14)
+
+            if best_7d and best_7d[1] < max_drift:
+                prev_signals = best_7d[0]
+            if best_14d and best_14d[1] < max_drift:
+                prev_prev_signals = best_14d[0]
+        except (ValueError, TypeError):
+            # Fallback: positional walk if timestamps are missing or unparseable
+            for i in range(len(trajectory) - 2, -1, -1):
+                sc = trajectory[i].get('signal_count')
+                if sc is not None and sc > 0:
+                    if prev_signals is None:
+                        prev_signals = sc
+                    elif prev_prev_signals is None:
+                        prev_prev_signals = sc
+                        break
 
         if prev_signals and prev_signals > 0:
             weekly_growth_rate = round((current_signals - prev_signals) / prev_signals, 4)
